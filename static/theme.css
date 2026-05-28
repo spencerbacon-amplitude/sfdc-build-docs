@@ -1,0 +1,72 @@
+/* Single source of truth for palette + scrollbar + base body rules.
+   Consumed via @import by:
+     - dashboard styles.css   (../static/styles.css — relative import)
+     - ~/.claude/dark-theme.css  (served by dashboard at /claude-docs/dark-theme.css; imports /static/theme.css)
+     - spencerdev docs/worker-workflows/styles.css  (served by dashboard at /docs/worker-workflows/styles.css; imports /static/theme.css)
+   Editing this file changes the look of all three.
+   Canonical palette per .claude/specs/dark-theme-redesign.md. */
+
+:root {
+  /* Backgrounds — 5 levels of depth */
+  --bg-base:    #0f1012;   /* deepest — activity log, file editor bg */
+  --bg-page:    #16181c;   /* page / column fills */
+  --bg-panel:   #1e2024;   /* cards, waves, panels, nav, sidebar */
+  --bg-surface: #232529;   /* hover, code chips, inputs */
+  --bg-raised:  #2c2e33;   /* popovers / elevated */
+
+  /* Borders */
+  --border-subtle: #1e2024;
+  --border:        #2e3138;
+  --border-strong: #3d4148;
+
+  /* Text */
+  --text-1: #e4e5e8;
+  --text-2: #8a8e99;
+  --text-3: #5a5e68;
+  --text-4: #3d4148;
+
+  /* Accents — blue */
+  --blue:         #1e61f0;
+  --blue-hover:   #558df7;
+  --blue-active:  #0f3a99;
+  --blue-link:    #4d8fff;
+  --blue-bg:      rgba(30, 97, 240, 0.10);
+  --blue-bg-h:    rgba(30, 97, 240, 0.18);
+  --blue-border:  rgba(30, 97, 240, 0.35);
+
+  /* Accents — green */
+  --green:        #33a66c;
+  --green-text:   #4ec688;
+  --green-bg:     rgba(51, 166, 108, 0.10);
+  --green-border: rgba(51, 166, 108, 0.28);
+
+  /* Accents — red */
+  --red:          #fc6965;
+  --red-text:     #fd8480;
+  --red-bg:       rgba(252, 105, 101, 0.10);
+  --red-border:   rgba(252, 105, 101, 0.28);
+
+  /* Accents — orange */
+  --orange:       #e77427;
+  --orange-text:  #f09050;
+  --orange-bg:    rgba(231, 116, 39, 0.10);
+  --orange-border:rgba(231, 116, 39, 0.30);
+
+  /* Accents — purple */
+  --purple-text:  #b692f6;
+  --purple-bg:    rgba(182, 146, 246, 0.10);
+  --purple-border:rgba(182, 146, 246, 0.30);
+
+  /* Accents — yellow */
+  --yellow:       #e8b94a;
+  --yellow-bg:    rgba(232, 185, 74, 0.08);
+  --yellow-border:rgba(232, 185, 74, 0.22);
+}
+
+* { box-sizing: border-box; }
+
+/* Scrollbars — minimal dark style across the whole app. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 100px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }

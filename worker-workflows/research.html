@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-research-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar research">
+            <h1>
+                🟦 sfdc-research-worker
+                <span class="sub"
+                    >Read-only codebase research — fans out searches in parallel, returns full file contents</span
+                >
+            </h1>
+            <div class="lane">lane: <code>read-only</code> · no writes · no deploys · no commits</div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-research-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Glob · Grep · Bash</code> (no Write / Edit).
+        </div>
+
+        <p>
+            Invoked by <code>/sfdc-drive-build</code> at kickoff and whenever a downstream worker needs additional
+            context. Locates every file relevant to a feature description and returns their <b>full contents</b> so the
+            caller can plan or implement without re-reading. Mirrors the research recipe used by
+            <code>sfdc-quick-build</code> and <code>sfdc-guided-build</code>.
+        </p>
+
+        <div class="callout read-only">
+            <strong>Read-only worker:</strong> never writes, never edits, never deploys, never commits. Its single
+            output is a structured summary of file contents handed back to the caller.
+        </div>
+
+        <div class="flow">
+            <div class="step" data-n="1">
+                <h3>Receive feature description <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>caller-supplied: feature description, object names, hint paths</li>
+                </ul>
+                <p class="note">
+                    Caller is typically <code>/sfdc-drive-build</code> or another worker requesting context.
+                </p>
+            </div>
+
+            <div class="step" data-n="2">
+                <h3>Fan out parallel searches <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>
+                        force-app/main/default/lwc/ — <code>.js</code>, <code>.html</code>,
+                        <code>.js-meta.xml</code> for related components
+                    </li>
+                    <li>
+                        force-app/main/default/aura/ — <code>.cmp</code>, <code>.js</code>, <code>.css</code> for
+                        related bundles
+                    </li>
+                    <li>
+                        force-app/main/default/classes/ — controllers, services, queueables, helpers + their
+                        <code>*Test.cls</code>
+                    </li>
+                    <li>
+                        force-app/main/default/triggers/ — and the matching <code>*TriggerHandler</code> /
+                        <code>*TriggerHelper</code> classes
+                    </li>
+                    <li>
+                        force-app/main/default/objects/ — <code>.object-meta.xml</code>, fields, validationRules,
+                        recordTypes, listViews
+                    </li>
+                    <li>force-app/main/default/permissionsets/ — relevant ones for the feature's audience</li>
+                    <li>force-app/main/default/layouts/ — when objects/fields are involved</li>
+                    <li>force-app/main/default/flows/ — when automation may be affected</li>
+                </ul>
+                <p class="note">Parallel reads — don't serialize. Caller is waiting for the bundle.</p>
+            </div>
+
+            <div class="step" data-n="3">
+                <h3>Identify object relationships <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>For each custom object: lookup / master-detail chain + key child relationships</li>
+                    <li>Example: <code>Account → Opportunity → PS_Project__c</code></li>
+                </ul>
+                <p class="note">
+                    Caller may not know the chain — surface it explicitly so they can plan deploy ordering and bulk
+                    behavior.
+                </p>
+            </div>
+
+            <div class="step" data-n="4">
+                <h3>
+                    Retrieve managed-package fields if missing <span class="tag shell">shell</span>
+                    <span class="aside">(only when local copy missing)</span>
+                </h3>
+                <ul class="files">
+                    <li class="shell">
+                        sf project retrieve start --metadata "CustomField:&lt;Object__c&gt;.&lt;Field__c&gt;"
+                    </li>
+                </ul>
+                <p class="note">
+                    Do not use <code>--output-dir</code>. Do not query <code>FieldDefinition</code> via SOQL. After
+                    retrieval, read the <code>.field-meta.xml</code>.
+                </p>
+            </div>
+
+            <div class="step" data-n="5">
+                <h3>
+                    Consult authoritative data reference <span class="tag read">read</span>
+                    <span class="aside">(field-name and metric questions)</span>
+                </h3>
+                <ul class="files">
+                    <li>
+                        docs/salesforce-taxonomy.md — field definitions, ARR/ATR/ERR/churn/win-rate formulas, GTM
+                        segmentation, sales hierarchy, customer health, Salesforce ↔ Amplitude join
+                    </li>
+                </ul>
+                <p class="note">
+                    v5.0 snapshot (March 2026) — always confirm field existence under
+                    <code>force-app/main/default/objects/&lt;Object&gt;/fields/</code> before relying on a name.
+                </p>
+            </div>
+
+            <div class="step" data-n="6">
+                <h3>Return structured summary <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li><b>Files read</b> — full relative paths, grouped by type (LWC, Apex, Object metadata, etc.)</li>
+                    <li><b>File contents</b> — for each file, paste the full content under a heading with its path</li>
+                    <li><b>Object relationships</b> — chain diagrams for any custom object involved</li>
+                    <li><b>Managed package fields retrieved</b> — list with key properties (type, length, formula)</li>
+                    <li>
+                        <b>Gaps / unknowns</b> — anything the feature description suggested should exist but doesn't
+                    </li>
+                </ul>
+                <p class="note">
+                    Caller uses this directly without re-reading. The output replaces N file reads on the caller side.
+                </p>
+            </div>
+        </div>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never write, edit, or deploy</td>
+                <td>Read-only worker — that's the contract. No <code>Write</code> / <code>Edit</code> tool granted.</td>
+            </tr>
+            <tr>
+                <td>Never commit</td>
+                <td>Nothing to commit — output is the conversation, not files on disk.</td>
+            </tr>
+            <tr>
+                <td>Never query <code>FieldDefinition</code> via SOQL</td>
+                <td>Use <code>sf project retrieve start --metadata "CustomField:..."</code> instead.</td>
+            </tr>
+            <tr>
+                <td>Never use <code>--output-dir</code> on managed-field retrieve</td>
+                <td>Files must land in the canonical <code>force-app/main/default/objects/.../fields/</code> path.</td>
+            </tr>
+            <tr>
+                <td>Never trust the v5.0 taxonomy without confirming field existence</td>
+                <td>Snapshot can drift from current org state. Always grep the object dir.</td>
+            </tr>
+            <tr>
+                <td>Never serialize parallel reads</td>
+                <td>Caller is blocked waiting. Fan out, gather, return.</td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>Read every file relevant to a feature description across the whole codebase</li>
+                    <li>Glob / Grep across <code>force-app/</code> and <code>docs/</code></li>
+                    <li>Retrieve managed-package fields and read the resulting XML</li>
+                    <li>Surface object relationship chains and gaps the caller may not have flagged</li>
+                    <li>Cite <code>docs/salesforce-taxonomy.md</code> for field semantics</li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Write or edit any file (no <code>Write</code> / <code>Edit</code> tool)</li>
+                    <li>Deploy, run tests, or commit</li>
+                    <li>Make implementation decisions — only surface options + relationships</li>
+                    <li>Query <code>FieldDefinition</code> via SOQL (use metadata retrieve)</li>
+                    <li>Modify orchestrator state in <code>.pm/</code></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers (research feeds all 4 builders)</h2>
+            <div class="related-grid">
+                <a class="related-card apex" href="apex.html">
+                    <div class="name">Apex worker →</div>
+                    <div class="why">
+                        Research returns class + test + trigger handler bundle so Apex worker doesn't re-read.
+                    </div>
+                </a>
+                <a class="related-card lwc" href="lwc.html">
+                    <div class="name">LWC worker →</div>
+                    <div class="why">
+                        Research returns bundle + Aura ancestry + Apex controllers a component calls into.
+                    </div>
+                </a>
+                <a class="related-card flow" href="flow.html">
+                    <div class="name">Flow worker →</div>
+                    <div class="why">Research returns existing flows + referenced object/field metadata.</div>
+                </a>
+                <a class="related-card metadata" href="metadata.html">
+                    <div class="name">Metadata worker →</div>
+                    <div class="why">
+                        Research returns object schema, perm sets, layouts — and surfaces relationship chains.
+                    </div>
+                </a>
+                <a class="related-card review" href="review.html">
+                    <div class="name">Review worker →</div>
+                    <div class="why">Both are read-only — research feeds context, review evaluates the result.</div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

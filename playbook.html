@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Salesforce Coding Playbook</title>
+<link rel="stylesheet" href="dark-theme.css">
+<style>
+  /* playbook-specific tweaks */
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc ul ul { padding-left: 18px; margin-top: 4px; }
+  .toc li { margin: 4px 0; }
+  blockquote { border-left: 3px solid var(--border); padding-left: 14px; color: var(--text-2); margin: 16px 0; }
+  pre { background: var(--bg-surface); border: 1px solid var(--border); padding: 12px 16px; border-radius: 6px; overflow-x: auto; }
+  pre code { background: transparent; border: none; padding: 0; }
+  table { border-collapse: collapse; margin: 16px 0; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-surface); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Salesforce Coding Playbook</h1>
+  <div class="subtitle">Authoritative coding rules for the Salesforce DX project · referenced by every entry path</div>
+</header>
+
+<div class="toc">
+<ul>
+<li><a href="#table-of-contents">Table of contents</a></li>
+<li><a href="#apex-hard-stops">Apex hard-stops</a></li>
+<li><a href="#apex-authoring-patterns">Apex authoring patterns</a></li>
+<li><a href="#soql-discipline">SOQL discipline</a><ul>
+<li><a href="#selectivity">Selectivity</a></li>
+<li><a href="#inspect-the-query-plan-when-unsure">Inspect the query plan when unsure</a></li>
+<li><a href="#security-mode-required-on-every-query">Security mode — required on every query</a></li>
+<li><a href="#when-system_mode-is-mandatory-trigger-handlers-system-bookkeeping">When SYSTEM_MODE is mandatory — trigger handlers + system bookkeeping</a></li>
+<li><a href="#bulk-patterns-non-negotiable">Bulk patterns — non-negotiable</a></li>
+<li><a href="#dynamic-soql">Dynamic SOQL</a></li>
+<li><a href="#soql-anti-patterns-refuse-to-write">SOQL anti-patterns — refuse to write</a></li>
+<li><a href="#selector-pattern">Selector pattern</a></li>
+</ul>
+</li>
+<li><a href="#apex-test-discipline">Apex test discipline</a><ul>
+<li><a href="#testing-user_mode-selectors-services">Testing USER_MODE selectors / services</a></li>
+</ul>
+</li>
+<li><a href="#apex-callouts-self-callouts-to-the-orgs-own-rest-tooling-api">Apex callouts — self-callouts to the org's own REST / Tooling API</a><ul>
+<li><a href="#userinfogetsessionid-returns-the-wrong-token-from-auraenabled-context">UserInfo.getSessionId() returns the wrong token from @AuraEnabled context</a></li>
+<li><a href="#auraenabledcacheabletrue-is-incompatible-with-http-callouts">@AuraEnabled(cacheable=true) is incompatible with HTTP callouts</a></li>
+<li><a href="#auras-serialization-of-mapstring-x-hides-keys-from-the-js-side">Aura's serialization of Map&lt;String, X&gt; hides keys from the JS side</a></li>
+<li><a href="#tooling-soql-filter-quirks">Tooling SOQL filter quirks</a></li>
+<li><a href="#remote-site-settings-are-not-required-for-self-callouts-to-the-orgs-my-domain">Remote Site Settings are NOT required for self-callouts to the org's My Domain</a></li>
+</ul>
+</li>
+<li><a href="#code-analyzer-pass">Code analyzer pass</a></li>
+<li><a href="#lwc-hard-stops">LWC hard-stops</a></li>
+<li><a href="#lwc-modern-patterns-api-660">LWC modern patterns (API 66.0)</a><ul>
+<li><a href="#lwcif-lwcelseif-lwcelse">lwc:if / lwc:elseif / lwc:else</a></li>
+<li><a href="#lwcspread-for-dynamic-attributes">lwc:spread for dynamic attributes</a></li>
+<li><a href="#lwcon-for-dynamic-event-handlers-spring-26">lwc:on for dynamic event handlers (Spring '26)</a></li>
+<li><a href="#complex-template-expressions-beta">Complex template expressions (beta)</a></li>
+</ul>
+</li>
+<li><a href="#lwc-project-specifics">LWC project specifics</a><ul>
+<li><a href="#required-css-color-tokens-ps-tool-amplitude-risk-signals-components">Required CSS color tokens (PS Tool + Amplitude Risk Signals components)</a></li>
+<li><a href="#required-button-pattern-cancel-confirm-save-approve-accept-apply">Required button pattern (Cancel / Confirm / Save / Approve / Accept / Apply)</a></li>
+<li><a href="#lwc-meta-xml-traps-will-fail-deploy">LWC meta XML traps (will fail deploy)</a></li>
+<li><a href="#community-recordid-pitfall">Community recordId pitfall</a></li>
+<li><a href="#static-resources-as-default-images">Static resources as default images</a></li>
+<li><a href="#reusable-lwc-bundles-in-this-project">Reusable LWC bundles in this project</a></li>
+</ul>
+</li>
+<li><a href="#lwc-wire-events-flow-jest-slds-2">LWC wire, events, Flow, Jest, SLDS 2</a><ul>
+<li><a href="#wire-patterns">Wire patterns</a></li>
+<li><a href="#custom-event-patterns">Custom event patterns</a></li>
+<li><a href="#flow-integration-component-targeting-lightning__flowscreen">Flow integration (component targeting lightning__FlowScreen)</a></li>
+<li><a href="#jest-hardening">Jest hardening</a></li>
+<li><a href="#slds-2-dark-mode-readiness">SLDS 2 / dark-mode readiness</a></li>
+</ul>
+</li>
+<li><a href="#flow-hard-stops">Flow hard-stops</a><ul>
+<li><a href="#when-not-to-build-a-flow">When NOT to build a flow</a></li>
+<li><a href="#flow-type-decision">Flow type decision</a></li>
+</ul>
+</li>
+<li><a href="#flow-conventions-and-performance">Flow conventions and performance</a><ul>
+<li><a href="#variable-prefixes">Variable prefixes</a></li>
+<li><a href="#element-names">Element names</a></li>
+<li><a href="#descriptions-matter">Descriptions matter</a></li>
+<li><a href="#performance-patterns">Performance patterns</a></li>
+<li><a href="#error-handling-three-tiers">Error handling — three tiers</a></li>
+<li><a href="#data-load-bypass">Data-load bypass</a></li>
+<li><a href="#flow-deploy-activation">Flow deploy + activation</a></li>
+<li><a href="#flow-anti-pattern-checklist-run-before-done">Flow anti-pattern checklist (run before DONE)</a></li>
+</ul>
+</li>
+<li><a href="#metadata-landmines">Metadata landmines</a><ul>
+<li><a href="#permission-sets">Permission sets</a></li>
+<li><a href="#custom-objects">Custom objects</a></li>
+<li><a href="#custom-fields">Custom fields</a></li>
+<li><a href="#validation-rules">Validation rules</a></li>
+<li><a href="#flexipages">FlexiPages</a></li>
+<li><a href="#custom-tabs">Custom tabs</a></li>
+<li><a href="#custom-applications">Custom applications</a></li>
+<li><a href="#list-views">List views</a></li>
+<li><a href="#fls-strategy">FLS strategy</a></li>
+<li><a href="#managed-package-field-retrieval">Managed package field retrieval</a></li>
+</ul>
+</li>
+<li><a href="#deployment-ordering">Deployment ordering</a></li>
+<li><a href="#existing-project-frameworks-cite-dont-restate">Existing project frameworks (cite, don't restate)</a></li>
+<li><a href="#reuse-and-pattern-continuity">Reuse and pattern continuity</a><ul>
+<li><a href="#reuse-before-reinventing">Reuse before reinventing</a></li>
+<li><a href="#intra-change-dry">Intra-change DRY</a></li>
+<li><a href="#when-a-parallel-approach-is-justified">When a parallel approach IS justified</a></li>
+</ul>
+</li>
+<li><a href="#how-this-playbook-is-used">How this playbook is used</a></li>
+</ul>
+</div>
+
+
+
+<p>Authoritative coding rules for this Salesforce DX project. Every entry path (conversational, <code>sfdc-quick-build</code>, <code>sfdc-guided-build</code>, <code>/sfdc-drive-build</code> workers) follows these rules.</p>
+<p>If a rule conflicts with something I'm about to write, I stop and surface the conflict — I don't "just write it and hope". Most of these are deploy- or runtime-blockers.</p>
+<hr />
+
+<hr />
+<h2 id="apex-hard-stops">Apex hard-stops</h2>
+<p>Refuse to write code that violates any of these. If the task seems to require violation, stop and ask.</p>
+<ul>
+<li><strong>SOQL / DML inside loops.</strong> Includes indirect cases (a method called in a loop that itself does SOQL/DML). Bulkify, batch, or hoist out of the loop.</li>
+<li><strong><code>@future</code> is forbidden.</strong> Use Queueable (supports chaining and non-primitives) or Batch (large volumes). No exceptions without an explicit written task instruction.</li>
+<li><strong><code>WITH USER_MODE</code> on SOQL</strong> that touches user-visible data. For DML where partial failure is recoverable, use <code>Database.update(records, false)</code> and inspect <code>Database.SaveResult[]</code>. Same pattern for <code>insert</code> / <code>upsert</code> / <code>delete</code>.</li>
+<li><strong>No <code>System.debug()</code> in hot paths.</strong> It consumes CPU even when debug logging is inactive. Acceptable in test methods and one-off scripts; never in trigger handlers, queueables, batches, or <code>@AuraEnabled</code> methods.</li>
+<li><strong>No hardcoded IDs.</strong> Use Custom Metadata, Custom Settings, Custom Labels, or <code>Schema.getGlobalDescribe()</code> lookups. Record IDs vary between sandboxes and prod.</li>
+<li><strong>Bind variables in dynamic SOQL — always.</strong> <code>Database.query('SELECT ... WHERE Foo = :bar')</code> with <code>bar</code> as a typed Apex variable. Never concatenate user input into a query string. For dynamic field names (not values), validate against an allowlist or <code>Schema.SObjectField</code> map.</li>
+<li><strong>PII fields must be encrypted at rest.</strong> If a task adds a new PII field, confirm encryption strategy before writing reads/writes.</li>
+<li><strong>Missing explicit <code>with sharing</code> / <code>without sharing</code></strong> on new classes. <code>inherited sharing</code> is acceptable when chosen deliberately; the keyword must be present.</li>
+<li><strong>SOQL without <code>LIMIT</code></strong> or with broad/no <code>WHERE</code>. If the result set could grow unbounded, add a <code>LIMIT</code> or paginate.</li>
+</ul>
+<h2 id="apex-authoring-patterns">Apex authoring patterns</h2>
+<p>For new classes (not modifying existing ones), prefer this layering. If existing helpers already split responsibilities differently in the codebase, match the existing pattern — don't introduce a new layering style mid-project.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Default sharing</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{SObject}Service</code></td>
+<td><code>with sharing</code></td>
+<td>Orchestration; delegates SOQL to selectors, validation/derivation to domains</td>
+</tr>
+<tr>
+<td><code>{SObject}Selector</code></td>
+<td><code>inherited sharing</code></td>
+<td>SOQL only; returns <code>List&lt;SObject&gt;</code> or <code>Map&lt;Id, SObject&gt;</code></td>
+</tr>
+<tr>
+<td><code>{SObject}Domain</code></td>
+<td><code>with sharing</code></td>
+<td>Validation, defaults, derivations; no SOQL/DML</td>
+</tr>
+<tr>
+<td><code>{Descriptive}Queueable</code></td>
+<td><code>with sharing</code></td>
+<td>Enqueueable job; chainable; supports non-primitives</td>
+</tr>
+<tr>
+<td><code>{Descriptive}Batch</code></td>
+<td><code>with sharing</code></td>
+<td><code>Database.Batchable&lt;SObject&gt;</code> for large datasets</td>
+</tr>
+<tr>
+<td><code>{Descriptive}Util</code></td>
+<td><code>with sharing</code></td>
+<td>Stateless helpers</td>
+</tr>
+<tr>
+<td><code>{Descriptive}Exception</code></td>
+<td>(n/a)</td>
+<td>Custom exception</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Async decision:</strong> Queueable is the default. Batch when you must process more rows than a Queueable's heap allows. Scheduled Flow preferred over Schedulable Apex for recurring work. Finalizer for post-job cleanup. <strong>Never <code>@future</code>.</strong></p>
+<p>Methods + variables: <code>camelCase</code>. Constants: <code>UPPER_SNAKE_CASE</code>, declared <code>private static final</code>.</p>
+<p><strong>Starter scaffolds:</strong> <a href="apex-templates/README.md">docs/apex-templates/</a> has 14 <code>.cls</code> templates (selector, service, domain, queueable, batch, schedulable, REST resource, etc.). They're starter shapes only — the README lists the mandatory project deltas (<code>System.debug</code> removal, <code>WITH USER_MODE</code> on selectors, <code>ApiCalloutLogger</code> for queueable observability, etc.) you must apply before deploying.</p>
+<h2 id="soql-discipline">SOQL discipline</h2>
+<blockquote>
+<p>Curated Salesforce reference: <a href="data-references/querying-soql/SKILL.md">docs/data-references/querying-soql/</a> — semi-joins, polymorphic relationships, bulk patterns.</p>
+</blockquote>
+<p>Most Apex performance and security incidents come from sloppy SOQL.</p>
+<h3 id="selectivity">Selectivity</h3>
+<p>A query is <strong>selective</strong> if it returns &lt;10% of the first million matching records (or &lt;5% beyond), <strong>or</strong> filters on an indexed field. Non-selective queries on large objects (<code>Account</code>, <code>Contact</code>, <code>Opportunity</code>, <code>Task</code>, <code>Event</code>) will time out or trigger <code>QueryException: Non-selective query against large object type</code>.</p>
+<p>Indexed by default:</p>
+<ul>
+<li><code>Id</code>, <code>Name</code>, <code>OwnerId</code>, <code>CreatedDate</code>, <code>LastModifiedDate</code>, <code>SystemModstamp</code>, <code>RecordTypeId</code></li>
+<li>All External ID fields and Master-Detail relationship fields</li>
+<li>Lookup fields with unique constraints</li>
+<li>Standard-object specifics: <code>Account.AccountNumber</code>, <code>Account.Site</code>, <code>Contact.Email</code>, <code>Lead.Email</code>, <code>Case.CaseNumber</code></li>
+</ul>
+<p>If a <code>WHERE</code> clause has no indexed field and the target object has &gt;100K rows, request a custom index from Salesforce Support — or rethink the design.</p>
+<p><strong>Wildcards:</strong> <code>LIKE 'Acme%'</code> uses the index. <code>LIKE '%corp'</code> and <code>LIKE '%acme%'</code> do not (table scan). Trailing wildcards only.</p>
+<h3 id="inspect-the-query-plan-when-unsure">Inspect the query plan when unsure</h3>
+<pre><code class="language-bash">sf data query --query &quot;SELECT Id FROM Account WHERE Industry = 'Tech' AND CreatedDate = LAST_N_DAYS:30&quot; --use-tooling-api --plan --target-org spencerdev
+</code></pre>
+<p><code>LeadingOperationType: Index</code> is good. <code>TableScan</code> means rewrite the filter.</p>
+<h3 id="security-mode-required-on-every-query">Security mode — required on every query</h3>
+<p>Pick one explicitly per query — the platform will not infer:</p>
+<ul>
+<li><strong><code>WITH USER_MODE</code></strong> (preferred default for user-initiated paths) — enforces both FLS and record-level sharing. Apex 2024+ standard.</li>
+<li><strong><code>WITH SECURITY_ENFORCED</code></strong> — enforces FLS, throws <code>System.QueryException</code> on inaccessible fields. Use when you'd rather fail loudly than hide rows.</li>
+<li><strong><code>WITH SYSTEM_MODE</code></strong> — bypasses FLS and sharing. Required (not optional) for trigger handlers and system bookkeeping — see next subsection.</li>
+</ul>
+<p>For DML where partial failure should not abort the transaction, pair with <code>Security.stripInaccessible(AccessType.READABLE | UPDATABLE, records)</code> to silently drop fields the user can't write.</p>
+<h3 id="when-system_mode-is-mandatory-trigger-handlers-system-bookkeeping">When <code>SYSTEM_MODE</code> is mandatory — trigger handlers + system bookkeeping</h3>
+<p><strong>Hard rule:</strong> SOQL and DML in trigger handlers, denormalization queueables, and scheduled bookkeeping jobs MUST use <code>WITH SYSTEM_MODE</code> (and <code>AccessLevel.SYSTEM_MODE</code> for <code>Database.update</code> / <code>insert</code> / <code>upsert</code> / <code>delete</code>). This is enforced by the pre-commit grep at <code>scripts/check-trigger-handler-system-mode.js</code> for <code>*TriggerHandler.cls</code> and by <code>sfdc-review-worker</code> Pass 2 for everything else.</p>
+<p><strong>Why:</strong> trigger handlers fire for every DML, regardless of who initiated it. If a user without FLS on a derived field (Copado deploy user, integration user, anyone without the relevant perm set) inserts or updates a parent record, a <code>WITH USER_MODE</code> query inside the handler throws <code>System.QueryException</code> and rolls back the entire transaction. This blocks deploys and breaks integrations. The propagation is the system's responsibility, not the user's — <code>SYSTEM_MODE</code> is correct.</p>
+<p><strong>Applies to:</strong></p>
+<ul>
+<li><code>*Trigger.cls</code> thin triggers and <code>*TriggerHandler.cls</code> / <code>*TriggerHelper.cls</code> handler classes.</li>
+<li>Queueables / batches / schedulables that exist to propagate denormalized fields, run backfills, or keep derived state in sync (e.g. <code>AlertNameBackfillQueueable</code>).</li>
+<li><code>Database.update(records, AccessLevel.SYSTEM_MODE)</code> — not <code>AccessLevel.USER_MODE</code> — for the DML that follows a SYSTEM_MODE read in the same code path.</li>
+</ul>
+<p><strong>Does NOT apply to:</strong></p>
+<ul>
+<li><code>@AuraEnabled</code> controller methods called from LWC — user-facing, USER_MODE is correct.</li>
+<li>REST resources (<code>@RestResource</code>) — user-facing.</li>
+<li>Invocables called from screen flows where the user's permissions should be respected.</li>
+<li>Selectors used by both user-facing and system code — pass <code>AccessLevel</code> as a parameter so each caller chooses.</li>
+</ul>
+<p><strong>Sanity check before writing <code>WITH USER_MODE</code> in any new class:</strong> ask "would a deploy with <code>RunLocalTests</code> succeed for a Copado service user who has no perm sets beyond the integration default?" If the answer is no, the code is in a system path and needs <code>SYSTEM_MODE</code>.</p>
+<h3 id="bulk-patterns-non-negotiable">Bulk patterns — non-negotiable</h3>
+<ul>
+<li><strong>Never SOQL inside a loop.</strong> Pull needed records into a <code>Map&lt;Id, SObject&gt;</code> <em>before</em> the loop, then <code>map.get(id)</code> inside.</li>
+<li><strong>SOQL <code>for</code> loops for large datasets</strong> — auto-batches in 200-record chunks, avoids heap blowout:
+    <code>apex
+    for (Account a : [SELECT Id, Name FROM Account WHERE Industry__c = 'Tech' WITH USER_MODE]) {
+        // process one at a time, heap stays bounded
+    }</code></li>
+<li><strong>Bulk lookup pattern for triggers:</strong>
+    <code>apex
+    Set&lt;Id&gt; accountIds = new Set&lt;Id&gt;();
+    for (Opportunity o : Trigger.new) accountIds.add(o.AccountId);
+    Map&lt;Id, Account&gt; accountById = new Map&lt;Id, Account&gt;([
+        SELECT Id, Owner.Email FROM Account WHERE Id IN :accountIds WITH USER_MODE
+    ]);
+    for (Opportunity o : Trigger.new) {
+        Account a = accountById.get(o.AccountId);  // O(1)
+    }</code></li>
+</ul>
+<h3 id="dynamic-soql">Dynamic SOQL</h3>
+<p>When the query must be constructed at runtime, use <code>Database.queryWithBinds</code> (modern, injection-safe):</p>
+<pre><code class="language-apex">Map&lt;String, Object&gt; binds = new Map&lt;String, Object&gt;{
+    'industry' =&gt; industry,
+    'minRev'   =&gt; minRev
+};
+List&lt;Account&gt; rows = Database.queryWithBinds(
+    'SELECT Id, Name FROM Account WHERE Industry = :industry AND AnnualRevenue &gt;= :minRev WITH USER_MODE',
+    binds,
+    AccessLevel.USER_MODE
+);
+</code></pre>
+<p>For dynamic field names (not values), validate against <code>Schema.SObjectType.&lt;Obj&gt;.fields.getMap()</code> keys.</p>
+<h3 id="soql-anti-patterns-refuse-to-write">SOQL anti-patterns — refuse to write</h3>
+<ul>
+<li>Equivalent of <code>SELECT *</code> — querying every field "just in case". Breaks FLS surface area.</li>
+<li>Querying with no <code>WHERE</code> on a custom or standard object with &gt;10K rows.</li>
+<li>Filtering in Apex after a broad query. Push the filter into the <code>WHERE</code>.</li>
+<li>Calling a method that does SOQL/DML inside a loop. Most-missed governor violation.</li>
+<li>Hardcoded ID literals in <code>WHERE</code> clauses.</li>
+</ul>
+<h3 id="selector-pattern">Selector pattern</h3>
+<p>If adding more than 2 queries against the same object, lift them into a selector:</p>
+<pre><code class="language-apex">public inherited sharing class AccountSelector {
+    public static Map&lt;Id, Account&gt; byIds(Set&lt;Id&gt; ids) {
+        if (ids == null || ids.isEmpty())
+            return new Map&lt;Id, Account&gt;();
+        return new Map&lt;Id, Account&gt;(
+            [
+                SELECT Id, Name, Industry, OwnerId
+                FROM Account
+                WHERE Id IN :ids
+                WITH USER_MODE
+            ]
+        );
+    }
+}
+</code></pre>
+<p>Centralizes field lists, makes FLS audit a one-class job, and lets tests mock via <code>@TestVisible static List&lt;Account&gt; mockData</code>. Match existing selector patterns in the codebase before introducing a new style.</p>
+<h2 id="apex-test-discipline">Apex test discipline</h2>
+<blockquote>
+<p>Curated Salesforce reference: <a href="debug-references/running-apex-tests/SKILL.md">docs/debug-references/running-apex-tests/</a> — test invocation, coverage flags, red-test debugging.</p>
+</blockquote>
+<p>A passing test run that violates these is still a fail — rewrite before claiming DONE.</p>
+<p><strong>Starter scaffolds + reference patterns:</strong> <a href="apex-test-templates/README.md">docs/apex-test-templates/</a> has a <code>*Test.cls</code> scaffold (positive / negative / bulk slots, modern <code>Assert</code> API) plus pattern catalogs for assertions, async testing, mocking, and data factories. Same rule as the Apex templates — the README lists mandatory project deltas (<code>AMPTestDataFactory</code>, <code>TriggerSettings__c</code> disables, named mocks) that must be applied before the file is deployable.</p>
+<ul>
+<li><strong>One behavior per test method.</strong> Positive, negative, and bulk are separate methods. <code>testFoo_NullInput</code> and <code>testFoo_EmptyInput</code> are two methods, not one.</li>
+<li><strong>Bulk tests use 251+ records,</strong> not 200. A 200-record test passes inside a single trigger batch; you need to cross the boundary to prove bulkification. For <code>Database.Batchable</code> tests, set <code>batchSize &gt;= testRecordCount</code> — only one <code>execute()</code> invocation runs in test context.</li>
+<li><strong>Use the <code>Assert</code> class, not <code>System.assert*</code>.</strong> <code>Assert.areEqual(expected, actual, msg)</code>, <code>Assert.isTrue(cond, msg)</code>, <code>Assert.isNotNull(x, msg)</code>, <code>Assert.fail(msg)</code>.</li>
+<li><strong>Assert exact values whenever the value is deterministic.</strong> Never <code>assert(count &gt; 0)</code> if you know the count is 3 — assert 3.</li>
+<li><strong>Test the negative paths.</strong> Every method with branching needs a test that hits the failure branch. Exceptions: catch and assert the type, don't let them propagate.</li>
+<li><strong>Wrap async + governor-sensitive work in <code>Test.startTest()</code> / <code>Test.stopTest()</code>.</strong> Resets governor limits; forces async to execute synchronously inside the block.</li>
+<li><strong>Never <code>seeAllData=true</code>.</strong> Build data via <code>AMPTestDataFactory</code>.</li>
+<li><strong>Mock external boundaries.</strong> <code>Test.setMock(HttpCalloutMock.class, ...)</code> (existing mocks: <code>WorkatoCalloutMock</code>, <code>GainsightCompanyGSIDHttpMockResponse</code>, <code>MavenlinkProjectMockService</code>). <code>Test.setFixedSearchResults(...)</code> for SOSL.</li>
+<li><strong><code>@TestSetup</code> over per-method setup</strong> when the same fixture serves multiple tests.</li>
+<li><strong>Coverage gate: ≥80%</strong> on the changed class. Read coverage from the test result, not the org-wide aggregate.</li>
+</ul>
+<p>If a test only asserts "no exception thrown" — that's not a test, that's a smoke check. Add an assertion against actual data the method produced.</p>
+<h3 id="testing-user_mode-selectors-services">Testing <code>USER_MODE</code> selectors / services</h3>
+<p>When the class under test runs SOQL or DML with <code>AccessLevel.USER_MODE</code> (or <code>WITH USER_MODE</code> / <code>WITH SECURITY_ENFORCED</code> / <code>insert as user</code>), the test must run inside <code>System.runAs(testUser)</code> where <code>testUser</code> has the gating permission set assigned <strong>before the test session starts</strong>. A mid-<code>@TestSetup</code> <code>PermissionSetAssignment</code> for the running user does NOT refresh the session FLS cache — the <code>@IsTest</code> SOQL still throws <code>"No such column"</code> for fields the assignment was supposed to grant. The only reliable pattern is a dedicated user provisioned in <code>@TestSetup</code>, run as via <code>System.runAs(...)</code> in each <code>@IsTest</code>.</p>
+<p>Canonical example: <a href="../force-app/main/default/classes/PodAlertSelectorTest.cls">PodAlertSelectorTest</a>. Pattern:</p>
+<pre><code class="language-apex">@IsTest
+private class FooSelectorTest {
+    private static final String TEST_USER_USERNAME_PREFIX = 'fooFls_';
+
+    @TestSetup
+    static void makeData() {
+        // 1. Mint the test user + assign the perm set. Wrap in runAs(currentUser) to
+        //    avoid MIXED_DML when the @TestSetup later inserts non-setup SObjects.
+        User testUser;
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            testUser = new User(
+                Username = TEST_USER_USERNAME_PREFIX + System.currentTimeMillis() + '@amplitude.com.invalid',
+                Email = 'foo.fls@amplitude.com', // real domain — satisfies email-domain validation rule
+                Alias = 'fooFls',
+                FirstName = 'Foo',
+                LastName = 'FlsTest',
+                TimeZoneSidKey = 'America/Los_Angeles',
+                LocaleSidKey = 'en_US',
+                EmailEncodingKey = 'UTF-8',
+                LanguageLocaleKey = 'en_US',
+                ProfileId = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1]
+                .Id
+            );
+            insert testUser;
+            List&lt;PermissionSet&gt; permSets = [SELECT Id FROM PermissionSet WHERE Name = 'Foo_Access' LIMIT 1];
+            if (!permSets.isEmpty()) {
+                insert new PermissionSetAssignment(AssigneeId = testUser.Id, PermissionSetId = permSets[0].Id);
+            }
+        }
+
+        // 2. TriggerSettings__c is a User-hierarchy custom setting. Insert a row for
+        //    BOTH the deploying user AND testUser — triggers fire in the inserting
+        //    user's context, and code running inside runAs(testUser) reads testUser's row.
+        insert new List&lt;TriggerSettings__c&gt;{
+            new TriggerSettings__c(SetupOwnerId = UserInfo.getUserId(), AccountTriggerDisabled__c = true /*, ...*/),
+            new TriggerSettings__c(SetupOwnerId = testUser.Id, AccountTriggerDisabled__c = true /*, ...*/)
+        };
+
+        // 3. Insert your test data. If the class under test does `insert as user` of a
+        //    child with a foreign key, reassign the parent record's OwnerId = testUser.Id.
+        //    viewAllRecords on the perm set covers SOQL reads but NOT DML cross-reference;
+        //    ownership is the reliable path.
+        Account acc = AMPTestDataFactory.createAccount();
+        acc.OwnerId = testUser.Id;
+        update acc;
+    }
+
+    private static User getTestUser() {
+        return [SELECT Id FROM User WHERE Username LIKE :(TEST_USER_USERNAME_PREFIX + '%') LIMIT 1];
+    }
+
+    @IsTest
+    static void testFoo() {
+        User u = getTestUser();
+        System.runAs(u) {
+            Test.startTest(); // keep start/stop INSIDE runAs so governor resets apply under testUser
+            // ... existing test body ...
+            Test.stopTest();
+        }
+    }
+}
+</code></pre>
+<p>Gotchas to remember (each one bit us once during the GTMSYS-12468 rollout):</p>
+<ul>
+<li><strong><code>viewAllRecords</code> on the perm set is not enough for DML cross-reference.</strong> If <code>MyService.cls</code> does <code>insert as user vo</code> with <code>vo.Account__c = something</code>, testUser needs ownership of <code>something</code> (or a sharing row), not just <code>viewAllRecords</code>. Reassign the parent's <code>OwnerId = testUser.Id</code> in <code>@TestSetup</code> for any record that becomes a foreign key target in a USER_MODE insert/update.</li>
+<li><strong>Per-test inserts in the <code>@IsTest</code> method need the same ownership treatment.</strong> If the test body inserts an <code>Opportunity</code> and later calls a service that does <code>insert as user vo</code> with <code>vo.Opportunity__c = opp.Id</code>, set <code>opp.OwnerId = testUser.Id</code> at insert time.</li>
+<li><strong>Username convention:</strong> <code>Email = '...@amplitude.com'</code> (satisfies the org's email-domain validation rule), <code>Username = '...@amplitude.com.invalid' + System.currentTimeMillis()</code> (globally unique across all orgs; the <code>.invalid</code> TLD avoids collisions with real prod usernames).</li>
+<li><strong>Per-class username prefix.</strong> Use a unique short prefix per test class (<code>paFls_</code>, <code>araFls_</code>, <code>msFls_</code>) so the <code>getTestUser()</code> <code>LIKE</code> query never collides with another class's user.</li>
+<li><strong>When tests filter by current-user ownership</strong> (e.g., <code>byUserId(UserInfo.getUserId())</code>), reassign the seeded child records to testUser at the end of <code>@TestSetup</code> so the filter still resolves inside <code>runAs(testUser)</code>.</li>
+</ul>
+<p>When NOT to apply this pattern: if the class under test only uses <code>USER_MODE</code> on fields that every base profile already reads (e.g. <code>Name</code>, <code>Status__c</code>, base Account fields), the original "current user" pattern is fine. The pattern is for selectors/services that read fields gated behind a perm set.</p>
+<h2 id="apex-callouts-self-callouts-to-the-orgs-own-rest-tooling-api">Apex callouts — self-callouts to the org's own REST / Tooling API</h2>
+<p>When an <code>@AuraEnabled</code> method needs to read metadata that's only available via the Tooling API (e.g. <code>PathAssistant</code>, <code>FieldDefinition</code> filters that regular SOQL rejects), there are several platform gotchas that will burn hours if you discover them at integration time. The pattern below is the canonical workaround; reference implementation lives in <code>PathAssistantConfigController</code>, <code>PathAssistantSessionProvider.page</code>, and <code>lwc/picklistPath/</code>.</p>
+<h3 id="userinfogetsessionid-returns-the-wrong-token-from-auraenabled-context"><code>UserInfo.getSessionId()</code> returns the wrong token from <code>@AuraEnabled</code> context</h3>
+<p>Calling <code>UserInfo.getSessionId()</code> works as expected from anonymous Apex (returns the 112-char OAuth token usable against <code>/services/data/</code>). The <strong>same call from inside an <code>@AuraEnabled</code> method invoked by an LWC</strong> returns a Lightning frontdoor token of the same length that the REST API rejects with <code>401 INVALID_SESSION_ID</code> (<code>"This session is not valid for use with the REST API"</code>).</p>
+<p><code>Auth.SessionManagement.getCurrentSession().get('SessionId')</code> is NOT a workaround — it returns the 18-char <code>AuthSession</code> record ID, not a Bearer token. Same 401.</p>
+<p><strong>Workaround (documented Salesforce pattern):</strong> a tiny Visualforce page that renders <code>{!$Api.Session_ID}</code>. The LWC loads the page in a hidden iframe; the page posts the API-valid session token to its parent via <code>postMessage</code>; the LWC catches the message and passes the token as a parameter to an Apex method that uses it as the Bearer header. Cross-origin <code>fetch('/apex/...')</code> is blocked by CORS in Lightning Experience, so the iframe + postMessage pattern (not <code>fetch</code>) is the path that actually works.</p>
+<p>Reference VF page (<code>PathAssistantSessionProvider.page</code>):</p>
+<pre><code class="language-html">&lt;apex:page contentType=&quot;text/html&quot; showHeader=&quot;false&quot; sidebar=&quot;false&quot; standardStylesheets=&quot;false&quot; cache=&quot;false&quot;&gt;
+    &lt;script type=&quot;text/javascript&quot;&gt;
+        window.parent.postMessage({ sfPathAssistantSession: '{!$Api.Session_ID}' }, '*');
+    &lt;/script&gt;
+&lt;/apex:page&gt;
+</code></pre>
+<p>Reference LWC hookup (in <code>connectedCallback</code> or property setter):</p>
+<pre><code class="language-javascript">let cachedApiSessionId = null;  // module-scope cache survives across LWC instances on the same tab
+
+_loadAsync() {
+    if (cachedApiSessionId) { this._callApex(cachedApiSessionId); return; }
+    this._messageHandler = (event) =&gt; {
+        const sid = event?.data?.sfPathAssistantSession;
+        if (!sid) return;
+        cachedApiSessionId = sid;
+        window.removeEventListener('message', this._messageHandler);
+        this._needsSession = false;
+        this._callApex(sid);
+    };
+    window.addEventListener('message', this._messageHandler);
+    this._needsSession = true;  // renders the iframe
+}
+
+disconnectedCallback() {
+    if (this._messageHandler) window.removeEventListener('message', this._messageHandler);
+}
+</code></pre>
+<p>Reference Apex:</p>
+<pre><code class="language-apex">@AuraEnabled
+public static String getConfigJson(Id recordId, String sessionId) {
+    String effectiveSid = String.isNotBlank(sessionId) ? sessionId : UserInfo.getSessionId();
+    HttpRequest req = new HttpRequest();
+    req.setEndpoint(URL.getOrgDomainUrl().toExternalForm() + '/services/data/v66.0/tooling/query/?q=' + EncodingUtil.urlEncode(soql, 'UTF-8'));
+    req.setHeader('Authorization', 'Bearer ' + effectiveSid);
+    req.setHeader('Content-Type', 'application/json');
+    req.setMethod('GET');
+    req.setTimeout(5000);
+    // ... send and parse
+}
+</code></pre>
+<p>Cache the session at module scope in the LWC — subsequent record pages in the same browser tab skip the iframe round-trip entirely.</p>
+<h3 id="auraenabledcacheabletrue-is-incompatible-with-http-callouts"><code>@AuraEnabled(cacheable=true)</code> is incompatible with HTTP callouts</h3>
+<p>Adding <code>cacheable=true</code> to an <code>@AuraEnabled</code> method that performs an HTTP callout throws a system error. <strong>Drop <code>cacheable=true</code></strong> when you need a callout and cache on the client side instead (module-scope variable in the LWC, or <code>sessionStorage</code> if you need cross-component sharing).</p>
+<h3 id="auras-serialization-of-mapstring-x-hides-keys-from-the-js-side">Aura's serialization of <code>Map&lt;String, X&gt;</code> hides keys from the JS side</h3>
+<p>When an <code>@AuraEnabled</code> method returns a class with <code>@AuraEnabled public Map&lt;String, List&lt;String&gt;&gt; stageToFields</code>, the response object on the JS side has <code>stageToFields: {...}</code> but <code>Object.keys(result.stageToFields)</code> returns <code>[]</code> — the keys are present in the runtime representation but not as enumerable own properties. Direct lookup by string key (<code>result.stageToFields['1 - Discovery']</code>) returns <code>undefined</code>.</p>
+<p><strong>Workaround:</strong> add a mirror field on the same class that holds the JSON-serialized map:</p>
+<pre><code class="language-apex">public class PathConfig {
+    @AuraEnabled
+    public Map&lt;String, List&lt;String&gt;&gt; stageToFields; // kept for Apex callers
+    @AuraEnabled
+    public String stageToFieldsJson; // for LWC consumption
+    // ... populate stageToFieldsJson = JSON.serialize(stageToFields) before returning
+}
+</code></pre>
+<p>LWC does <code>JSON.parse(result.stageToFieldsJson)</code> once and uses the parsed plain object normally.</p>
+<p>If returning a top-level <code>String</code> from <code>@AuraEnabled</code> (e.g. <code>getConfigJson</code> returning <code>JSON.serialize(cfg)</code>), the LWC parses the whole payload once — this also sidesteps any field-level schema caching the Aura framework does (a separate gotcha where a newly-deployed <code>@AuraEnabled</code> field can be silently stripped from cached responses until the user re-logs).</p>
+<h3 id="tooling-soql-filter-quirks">Tooling SOQL filter quirks</h3>
+<p>The relationship names that work in regular SOQL don't all work in Tooling. Two that bit us during the picklistPath build:</p>
+<ul>
+<li><strong><code>PathAssistant</code> filtering</strong> — use <code>WHERE SobjectType = 'Opportunity'</code>. Do NOT use <code>WHERE EntityDefinition.DeveloperName = 'Opportunity'</code> — Tooling rejects it with <code>"Didn't understand relationship 'EntityDefinition'"</code>.</li>
+<li><strong><code>Metadata</code> field requires single-row results</strong> — selecting <code>Metadata</code> (or <code>FullName</code>) on a Tooling object requires a query that returns exactly one row. Multi-row queries with <code>Metadata</code> in SELECT throw <code>"the query qualifications must specify no more than one row"</code>. The workaround is a two-step pattern: query for matching IDs first, then <code>GET /services/data/v66.0/tooling/sobjects/&lt;Type&gt;/&lt;Id&gt;</code> to fetch each one with its full <code>Metadata</code> payload.</li>
+</ul>
+<h3 id="remote-site-settings-are-not-required-for-self-callouts-to-the-orgs-my-domain">Remote Site Settings are NOT required for self-callouts to the org's My Domain</h3>
+<p>The platform allows callouts to <code>URL.getOrgDomainUrl().toExternalForm() + '/services/data/...'</code> implicitly. No <code>remoteSiteSettings/*.remoteSite-meta.xml</code> deploy needed.</p>
+<hr />
+<h2 id="code-analyzer-pass">Code analyzer pass</h2>
+<p>After tests pass, run the Salesforce code analyzer against changed files and remediate findings before deploying:</p>
+<pre><code class="language-bash">sf code-analyzer run --target force-app/main/default/classes/Foo.cls --target force-app/main/default/classes/FooTest.cls
+</code></pre>
+<ul>
+<li><strong>sev1 / sev2 (Critical / High):</strong> must fix before DONE.</li>
+<li><strong>sev3 (Medium):</strong> fix if it's in the file you touched; note it if pre-existing.</li>
+<li><strong>sev4 / sev5 (Low / Info):</strong> log and proceed unless trivially fixable.</li>
+</ul>
+<p>If analyzer isn't installed (<code>sf plugins inspect code-analyzer</code> returns nothing), skip and note "code-analyzer unavailable" — don't fail the task on tooling absence.</p>
+<hr />
+<h2 id="lwc-hard-stops">LWC hard-stops</h2>
+<p><strong>Starter scaffolds + PICKLES framework:</strong> <a href="lwc-templates/README.md">docs/lwc-templates/</a> has 13 component bundles (basic, datatable, modal, form, flow-screen, graphql, record-picker, workspace, state-store, LMS, TypeScript, jest, apex-controller) and 16 reference docs. The <strong>PICKLES</strong> architectural framework — Prototype, Integrate, Composition, Kinetics, Libraries, Execution, Security — lives in <code>references/component-patterns.md</code> and <code>references/lwc-best-practices.md</code>, and <code>/lwc-design</code> walks PICKLES branch-by-branch when designing a new component. The 165-point quality rubric in <code>references/scoring-and-testing.md</code> is the reference checklist for review. As with the Apex starters, the README lists mandatory project deltas (native buttons over <code>lightning-button</code> for action buttons, Amplitude color tokens, <code>WorkatoService</code> for outbound, etc.) — apply before deploy.</p>
+<p>If the task requires one of these, stop and surface the conflict.</p>
+<ul>
+<li><strong>Never mutate <code>@api</code> properties.</strong> Copy first: <code>this.items = [...this.items, newItem]</code>. Mutating <code>@api</code> is silent corruption.</li>
+<li><strong>Never combine <code>@api</code> with <code>@track</code> or <code>@wire</code>.</strong> Decorate getters only (never the setter) for <code>@api</code> getter/setter pairs.</li>
+<li><strong>Never <code>@track</code> a primitive.</strong> Primitives have been reactive by default since Spring '20. <code>@track</code> is only for nested-property mutation on objects/arrays — and even then, reassign the whole object when you can.</li>
+<li><strong>Never use <code>if:true</code> / <code>if:false</code>.</strong> Use <code>lwc:if</code> / <code>lwc:elseif</code> / <code>lwc:else</code>.</li>
+<li><strong>Never use index as the <code>for:each</code> key.</strong> Use a stable unique ID (<code>key={item.Id}</code>).</li>
+<li><strong>Never call <code>@wire</code> with a non-reactive parameter.</strong> Use <code>'$propName'</code> with <code>propName</code> as <code>@api</code> or tracked. A literal or local <code>let</code> pins the wire to its initial value.</li>
+<li><strong>Never forget cleanup in <code>disconnectedCallback</code>.</strong> Every <code>addEventListener</code>, every subscription, every interval — pair with removal.</li>
+<li><strong>Never override <code>.slds-*</code> classes directly.</strong> Use SLDS styling hooks (<code>--slds-c-button-brand-color-background: ...</code>).</li>
+<li><strong>Never select base components by tag in CSS</strong> (<code>lightning-button { ... }</code>). Shadow DOM blocks it.</li>
+<li><strong>Never rely on compiler-generated scope tokens</strong> (<code>c-child[lwc-2j48...-host]</code>). Use <code>:host</code> for component-level styles.</li>
+</ul>
+<h2 id="lwc-modern-patterns-api-660">LWC modern patterns (API 66.0)</h2>
+<p>The project is on API 66.0 — these features are available; use them when they reduce code or improve readability.</p>
+<h3 id="lwcif-lwcelseif-lwcelse"><code>lwc:if</code> / <code>lwc:elseif</code> / <code>lwc:else</code></h3>
+<pre><code class="language-html">&lt;template lwc:if=&quot;{isLoading}&quot;&gt;
+    &lt;lightning-spinner&gt;&lt;/lightning-spinner&gt;
+&lt;/template&gt;
+&lt;template lwc:elseif=&quot;{error}&quot;&gt;
+    &lt;c-error-panel error=&quot;{error}&quot;&gt;&lt;/c-error-panel&gt;
+&lt;/template&gt;
+&lt;template lwc:else&gt;
+    &lt;c-data-view data=&quot;{records}&quot;&gt;&lt;/c-data-view&gt;
+&lt;/template&gt;
+</code></pre>
+<h3 id="lwcspread-for-dynamic-attributes"><code>lwc:spread</code> for dynamic attributes</h3>
+<pre><code class="language-html">&lt;lightning-button lwc:spread=&quot;{buttonAttributes}&quot; onclick=&quot;{handleClick}&quot;&gt;&lt;/lightning-button&gt;
+</code></pre>
+<pre><code class="language-js">get buttonAttributes() {
+    return { label: this.label, variant: this.isImportant ? 'brand' : 'neutral', disabled: this.busy };
+}
+</code></pre>
+<p>Event handlers stay outside the spread — <code>onclick</code> in the spread won't work.</p>
+<h3 id="lwcon-for-dynamic-event-handlers-spring-26"><code>lwc:on</code> for dynamic event handlers (Spring '26)</h3>
+<pre><code class="language-html">&lt;button lwc:on=&quot;{eventHandlers}&quot;&gt;Click&lt;/button&gt;
+</code></pre>
+<pre><code class="language-js">eventHandlers = {
+    click: this.handleClick.bind(this),
+    focus: this.handleFocus.bind(this)
+};
+</code></pre>
+<p>Event names lowercase, no <code>on</code> prefix. Always <code>.bind(this)</code> or arrow.</p>
+<h3 id="complex-template-expressions-beta">Complex template expressions (beta)</h3>
+<p><code>{!isLoading}</code>, <code>{count &gt; 0}</code>, <code>{user?.profile?.name}</code>, <code>{value ?? 'default'}</code>, <code>{a &amp;&amp; b}</code>, ternary. Beta in 66.0 — prefer getters for anything non-trivial, but simple negation / optional-chaining inline is fine.</p>
+<h2 id="lwc-project-specifics">LWC project specifics</h2>
+<h3 id="required-css-color-tokens-ps-tool-amplitude-risk-signals-components">Required CSS color tokens (PS Tool + Amplitude Risk Signals components)</h3>
+<p>Define all four canonical action tokens in <code>:host {}</code> at the top of every component's CSS file. Reference via <code>var(--token-name)</code> everywhere — never hardcode hex.</p>
+<pre><code class="language-css">:host {
+    --amp-color-success: #2e844a; /* save, close, healthy status */
+    --amp-color-danger: #c23934; /* delete, error, critical status */
+    --amp-color-warning: #dd7a00; /* warning, at-risk status */
+    --amp-color-neutral-dark: #514f4d; /* cancel */
+}
+/* Shared action color tokens — keep in sync */
+</code></pre>
+<p>Keep the trailing comment so future devs know to sync values across components.</p>
+<h3 id="required-button-pattern-cancel-confirm-save-approve-accept-apply">Required button pattern (Cancel / Confirm / Save / Approve / Accept / Apply)</h3>
+<p>Use native <code>&lt;button&gt;</code> with SLDS classes — never <code>lightning-button</code> for these actions. Shadow DOM on <code>lightning-button</code> blocks reliable CSS hover overrides.</p>
+<p><strong>Cancel:</strong></p>
+<pre><code class="language-html">&lt;button class=&quot;slds-button slds-button_neutral dr-cancel-btn&quot; onclick=&quot;{handler}&quot;&gt;Cancel&lt;/button&gt;
+</code></pre>
+<pre><code class="language-css">.dr-cancel-btn:hover {
+    background: var(--amp-color-neutral-dark);
+    color: #fff;
+}
+</code></pre>
+<p><strong>Positive action (Confirm / Save / Approve / Accept / Apply):</strong></p>
+<pre><code class="language-html">&lt;button class=&quot;slds-button slds-button_brand dr-confirm-btn&quot; onclick=&quot;{handler}&quot;&gt;Confirm&lt;/button&gt;
+</code></pre>
+<pre><code class="language-css">.dr-confirm-btn:hover {
+    background: var(--amp-color-success);
+    color: #fff;
+}
+</code></pre>
+<p><strong>Inline outline variant</strong> (e.g. row-level confirm):</p>
+<pre><code class="language-html">&lt;button class=&quot;slds-button slds-button_outline-brand dr-inline-confirm-btn&quot; onclick=&quot;{handler}&quot;&gt;Confirm&lt;/button&gt;
+</code></pre>
+<p>Same green hover on <code>var(--amp-color-success)</code>.</p>
+<p><code>lightning-button</code> is fine for non-action buttons (icon buttons, toolbar actions, navigation) — the rule applies specifically to Cancel and positive-action buttons.</p>
+<h3 id="lwc-meta-xml-traps-will-fail-deploy">LWC meta XML traps (will fail deploy)</h3>
+<ul>
+<li><strong><code>lightningCommunity__Page</code></strong> does NOT support <code>&lt;property&gt;</code> tags inside <code>targetConfig</code>. Salesforce rejects the deploy. Only add a <code>targetConfig</code> for community targets if it contains supported child elements (e.g. <code>&lt;supportedFormFactors&gt;</code>). Declaring <code>&lt;target&gt;</code> alone is sufficient to expose the component in Experience Builder.</li>
+<li><strong><code>@api</code> properties are auto-discovered</strong> by Experience Builder — do not declare them in a community <code>targetConfig</code>.</li>
+</ul>
+<h3 id="community-recordid-pitfall">Community recordId pitfall</h3>
+<p>For LWC used in communities where <code>@api recordId</code> won't be auto-injected, add a <code>connectedCallback</code> that parses the record ID from <code>window.location.href</code>:</p>
+<pre><code class="language-js">const match = window.location.href.match(/\/s\/[^/]+\/([a-zA-Z0-9]{15,18})/);
+</code></pre>
+<h3 id="static-resources-as-default-images">Static resources as default images</h3>
+<p>Import the resource and expose via a getter that falls back when the <code>@api</code> property is blank:</p>
+<pre><code class="language-js">import RESOURCE_NAME from '@salesforce/resourceUrl/ResourceName';
+get imageUrl() { return this.imageOverride || RESOURCE_NAME; }
+</code></pre>
+<h3 id="reusable-lwc-bundles-in-this-project">Reusable LWC bundles in this project</h3>
+<p>Components that are designed to be reused across multiple record pages / objects. Read these before reinventing.</p>
+<p><strong><code>lwc/picklistPath</code></strong> — Amplitude-branded gradient chevron path for any picklist field on any object. Replaces / sits alongside the stock <code>runtime_sales_pathassistant:pathAssistant</code>. Configurable design-time properties: <code>fieldApiName</code> (required — e.g. <code>c_Journey_Stage__c</code>, <code>StageName</code>), <code>title</code> (optional header), <code>showKeyFields</code> (Boolean, default false — when true, renders per-stage key fields configured in Setup → Path Settings below the chevrons via <code>lightning-record-edit-form</code>). Account journey path uses <code>showKeyFields=false</code>; Opportunity record pages set it to <code>true</code>.</p>
+<p>Closed-stage behavior (when <code>showKeyFields=true</code> and the object has multiple <code>IsClosed = true</code> picklist values): all closed values collapse into a single "Closed" chevron at the end. Clicking it selects (doesn't commit); the commit button's label flips to "Select Closed Stage"; clicking the button opens a <code>lightning-combobox</code> modal ("Close This Opportunity") to pick the specific closed value. Closed values are RT-filtered by intersecting <code>PathAssistantConfigController.getPathConfig().closedValues</code> with the RT-scoped picklist set from <code>getPicklistValuesByRecordType</code>.</p>
+<p>Data sourcing: when <code>showKeyFields=true</code>, the LWC calls <code>PathAssistantConfigController.getPathConfigJson(recordId, sessionId)</code> to fetch per-stage key fields from <code>PathAssistant</code> metadata via Tooling REST. See the "Apex callouts — self-callouts" section above for the session-ID workaround that this depends on (<code>PathAssistantSessionProvider.page</code> + iframe + postMessage).</p>
+<h2 id="lwc-wire-events-flow-jest-slds-2">LWC wire, events, Flow, Jest, SLDS 2</h2>
+<h3 id="wire-patterns">Wire patterns</h3>
+<p>Always store the wire result for <code>refreshApex</code>:</p>
+<pre><code class="language-js">wiredAccountsResult;
+
+@wire(getAccounts, { searchTerm: '$searchTerm' })
+wiredAccounts(result) {
+    this.wiredAccountsResult = result;
+    const { data, error } = result;
+    if (data) { this.accounts = data; this.error = undefined; }
+    else if (error) { this.error = this.reduceErrors(error); this.accounts = []; }
+}
+
+async handleRefresh() { await refreshApex(this.wiredAccountsResult); }
+</code></pre>
+<p><code>@wire</code> for reactive reads. Imperative Apex for actions, DML, conditional/expensive loads.</p>
+<h3 id="custom-event-patterns">Custom event patterns</h3>
+<p>Default to maximum encapsulation (<code>bubbles: false, composed: false</code>). Open it up only when crossing shadow boundaries.</p>
+<pre><code class="language-js">this.dispatchEvent(
+    new CustomEvent('select', {
+        detail: { recordId: this.recordId }
+    })
+);
+</code></pre>
+<p>Always copy non-primitives in <code>detail</code> (<code>{ ...this.formData }</code>) — never pass a live reference.</p>
+<p>Event names: lowercase, no prefix, no underscores. <code>recordchange</code>, not <code>onRecordChange</code> or <code>record-change</code>.</p>
+<p>LMS vs custom events: parent-child = custom events. Sibling components on different pages or LWC↔Aura = Lightning Message Service.</p>
+<h3 id="flow-integration-component-targeting-lightning__flowscreen">Flow integration (component targeting <code>lightning__FlowScreen</code>)</h3>
+<p>Meta XML target + property roles:</p>
+<pre><code class="language-xml">&lt;targets&gt;&lt;target&gt;lightning__FlowScreen&lt;/target&gt;&lt;/targets&gt;
+&lt;targetConfigs&gt;
+    &lt;targetConfig targets=&quot;lightning__FlowScreen&quot;&gt;
+        &lt;property name=&quot;selectedRecordId&quot; type=&quot;String&quot; role=&quot;outputOnly&quot; /&gt;
+        &lt;property name=&quot;filterTerm&quot;       type=&quot;String&quot; role=&quot;inputOnly&quot;  /&gt;
+    &lt;/targetConfig&gt;
+&lt;/targetConfigs&gt;
+</code></pre>
+<p>To send a value back to Flow, <strong>both</strong> update the local prop <strong>and</strong> dispatch <code>FlowAttributeChangeEvent</code>:</p>
+<pre><code class="language-js">import { FlowAttributeChangeEvent, FlowNavigationFinishEvent } from 'lightning/flowSupport';
+
+this.selectedRecordId = id;
+this.dispatchEvent(new FlowAttributeChangeEvent('selectedRecordId', id));
+</code></pre>
+<p>Navigation: validate <code>availableActions</code> before firing.</p>
+<h3 id="jest-hardening">Jest hardening</h3>
+<p>LWC re-rendering is async — wait the right number of cycles:</p>
+<pre><code class="language-js">const flushPromises = () =&gt; new Promise((resolve) =&gt; setTimeout(resolve, 0));
+</code></pre>
+<p>DOM cleanup <code>afterEach</code>:</p>
+<pre><code class="language-js">afterEach(() =&gt; {
+    while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
+    jest.clearAllMocks();
+});
+</code></pre>
+<p>Mock Apex methods:</p>
+<pre><code class="language-js">jest.mock('@salesforce/apex/MyController.getData', () =&gt; ({ default: jest.fn() }), { virtual: true });
+import getData from '@salesforce/apex/MyController.getData';
+getData.mockResolvedValue(MOCK_DATA);
+</code></pre>
+<p>Unbox Lightning Web Security proxies:</p>
+<pre><code class="language-js">expect(JSON.parse(JSON.stringify(element.data))).toEqual(expected);
+</code></pre>
+<p>If a component uses <code>ResizeObserver</code> or <code>IntersectionObserver</code>, polyfill in <code>jest.setup.js</code>.</p>
+<h3 id="slds-2-dark-mode-readiness">SLDS 2 / dark-mode readiness</h3>
+<p>When touching CSS, prefer SLDS 2 global tokens with fallback:</p>
+<pre><code class="language-css">background-color: var(--slds-g-color-surface-container-1, #ffffff);
+color: var(--slds-g-color-on-surface, #181818);
+border-color: var(--slds-g-color-border-1, #c9c9c9);
+</code></pre>
+<p><code>--slds-c-*</code> component-level hooks are not fully supported in SLDS 2 yet — stick to global hooks (<code>--slds-g-*</code>).</p>
+<p>Migration linter (preserves the <code>--amp-color-*</code> tokens if you keep them in <code>:host</code>):</p>
+<pre><code class="language-bash">npx @salesforce-ux/slds-linter@latest lint --fix .
+</code></pre>
+<hr />
+<h2 id="flow-hard-stops">Flow hard-stops</h2>
+<blockquote>
+<p>Curated Salesforce reference: <a href="flow-templates/README.md">docs/flow-templates/</a> — upstream <code>SKILL.md</code> + Amplitude deltas (bypass flags, fault paths, bulk verification).</p>
+</blockquote>
+<ul>
+<li><strong>Never loop over <code>$Record</code>.</strong> The platform already handles bulk batching — use <code>$Record</code> directly. <code>$Record__c</code> doesn't exist.</li>
+<li><strong>No DML elements inside a Loop.</strong> Build a collection inside the loop, run a single Create/Update/Delete on the collection after.</li>
+<li><strong>No Get Records inside a Loop.</strong> Move it before the loop with an <code>IN</code> filter, then use a Collection Filter inside for in-memory lookups.</li>
+<li><strong>No hard-coded Salesforce IDs.</strong> Use Custom Metadata records storing DeveloperNames, resolve at runtime.</li>
+<li><strong>No unfiltered Get Records on large objects</strong> (Account, Contact, Opportunity, Task, Event). Filter on an indexed field.</li>
+<li><strong>Every DML element needs a fault path.</strong> Connect a fault connector that handles failure deliberately — log, notify, rollback.</li>
+<li><strong>Don't store all fields with <code>storeOutputAutomatically=true</code></strong> on a Get Records against a wide object. Specify only fields the flow reads.</li>
+<li><strong>Each Screen element breaks the transaction boundary.</strong> DML committed before a screen cannot be rolled back after. For multi-step forms: collect all input across screens first, run DML after the final screen — or use Roll Back Records deliberately.</li>
+</ul>
+<h3 id="when-not-to-build-a-flow">When NOT to build a flow</h3>
+<p>Before writing one, confirm a simpler tool can't solve it:</p>
+<ul>
+<li><strong>Formula field</strong> — derived value on a record, no automation needed.</li>
+<li><strong>Validation Rule</strong> — block a save with an error message.</li>
+<li><strong>Roll-Up Summary</strong> — sum/count/min/max on a master-detail parent.</li>
+<li><strong>Approval Process</strong> — multi-step approval routing.</li>
+</ul>
+<p>Escalate to Apex (invocable) when the task involves: &gt;5 nested decision branches or &gt;20 elements; complex math/regex/string manipulation; HTTP callouts with retry; partial-commit transactions with savepoints; 10K+ records per run.</p>
+<h3 id="flow-type-decision">Flow type decision</h3>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Flow type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Update the same record before save</td>
+<td><strong>Before-save record-triggered</strong> (fastest, no DML)</td>
+</tr>
+<tr>
+<td>Update related records, send emails, callouts</td>
+<td><strong>After-save record-triggered</strong></td>
+</tr>
+<tr>
+<td>User interaction (form/wizard)</td>
+<td><strong>Screen flow</strong></td>
+</tr>
+<tr>
+<td>Triggered from Apex / Process Builder / button</td>
+<td><strong>Autolaunched</strong></td>
+</tr>
+<tr>
+<td>Recurring on a schedule</td>
+<td><strong>Scheduled flow</strong> (preferred over Schedulable Apex)</td>
+</tr>
+<tr>
+<td>Triggered by a platform event</td>
+<td><strong>Platform-event-triggered</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="flow-conventions-and-performance">Flow conventions and performance</h2>
+<h3 id="variable-prefixes">Variable prefixes</h3>
+<table>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>var_</code></td>
+<td>regular variables (<code>var_AccountName</code>)</td>
+</tr>
+<tr>
+<td><code>col_</code></td>
+<td>collections (<code>col_ContactIds</code>)</td>
+</tr>
+<tr>
+<td><code>rec_</code></td>
+<td>record variables (<code>rec_Account</code>)</td>
+</tr>
+<tr>
+<td><code>inp_</code></td>
+<td>inputs (<code>inp_RecordId</code>)</td>
+</tr>
+<tr>
+<td><code>out_</code></td>
+<td>outputs (<code>out_IsSuccess</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="element-names">Element names</h3>
+<p><code>PascalCase_With_Underscores</code>, descriptive. <code>Check_Account_Type</code> not <code>Decision_1</code>. Default names like <code>Decision_1</code> are a DONE-blocker — rename before deploy. Subflows: <code>Sub_</code> prefix (<code>Sub_LogError</code>, <code>Sub_SendEmailAlert</code>).</p>
+<h3 id="descriptions-matter">Descriptions matter</h3>
+<p>Every flow needs a description. Agentforce reads flow and element descriptions to decide what to invoke.</p>
+<p>Flow-level template:</p>
+<pre><code>[PURPOSE]. [TRIGGER]. [OBJECTS INVOLVED]. [WHAT CHANGES]. [DEPENDENCIES if any].
+</code></pre>
+<p>For complex Decision / Loop / Get Records / Assignment elements:</p>
+<pre><code>WHY: [business reason]
+WHAT: [technical summary]
+EDGE CASE: [special handling]
+</code></pre>
+<h3 id="performance-patterns">Performance patterns</h3>
+<p><strong>Collection Filter (avoids N+1 SOQL).</strong> Don't query inside a loop — query once with <code>IN</code>, filter in memory:</p>
+<pre><code>1. Get Records: ALL Contacts WHERE AccountId IN {!col_AccountIds}
+2. Loop Accounts:
+   → Collection Filter: Contacts WHERE AccountId = {!current_Account.Id}
+   → Process (zero SOQL per iteration)
+</code></pre>
+<p><strong>Transform over Loop</strong> (when no per-record logic needed). 30-50% faster than equivalent Loop + Assignment. Loop only when each record needs different processing.</p>
+<p><strong><code>$Record</code> direct access.</strong> In a record-triggered flow, never re-query the trigger object:</p>
+<pre><code>✅ Decision where {!$Record.StageName} equals &quot;Closed Won&quot;
+❌ Get Records → Account WHERE Id = {!$Record.Id}
+</code></pre>
+<p><strong>Custom Metadata for thresholds &amp; toggles.</strong> Prefer formula-reference path (zero SOQL):</p>
+<pre><code>{!$CustomMetadata.Flow_Settings__mdt.Discount_Threshold.Numeric_Value__c}
+</code></pre>
+<p><strong>Never store Salesforce IDs in CMDT</strong> — store DeveloperNames, resolve via Get Records at runtime.</p>
+<h3 id="error-handling-three-tiers">Error handling — three tiers</h3>
+<ol>
+<li><strong>Input validation (pre-execution).</strong> Check null/empty required values via a Decision at the top.</li>
+<li><strong>DML fault paths (during execution).</strong> Every Create/Update/Delete has a fault path capturing <code>{!$Flow.FaultMessage}</code>.</li>
+<li><strong>Multi-step rollback (post-failure).</strong> If step 3 fails, delete records created in steps 1–2. Single transaction = automatic rollback, but explicit Delete steps make intent clear.</li>
+</ol>
+<h3 id="data-load-bypass">Data-load bypass</h3>
+<p>For data migration / bulk loads, use a Custom Permission entry condition rather than a Decision inside the flow:</p>
+<ol>
+<li>Create <code>Bypass_&lt;FlowName&gt;__c</code> Custom Permission.</li>
+<li>Assign to a "Data Load Bypass" Permission Set.</li>
+<li>Flow entry condition: <code>NOT({!$Permission.Bypass_&lt;FlowName&gt;__c})</code>.</li>
+</ol>
+<h3 id="flow-deploy-activation">Flow deploy + activation</h3>
+<p>New flows or new versions deploy as <strong>Draft</strong> initially. Activation is a separate, deliberate step the user must approve. Bulk-test 251+ records before requesting activation.</p>
+<h3 id="flow-anti-pattern-checklist-run-before-done">Flow anti-pattern checklist (run before DONE)</h3>
+<ul>
+<li>[ ] No hard-coded Salesforce IDs in the flow XML</li>
+<li>[ ] No DML or Get Records inside a Loop</li>
+<li>[ ] No looping over <code>$Record</code></li>
+<li>[ ] No unfiltered Get Records on large objects</li>
+<li>[ ] Every DML element has a fault path connector</li>
+<li>[ ] Variables follow <code>var_ / col_ / rec_ / inp_ / out_</code> prefixes</li>
+<li>[ ] Elements have descriptive PascalCase names (no <code>Decision_1</code>)</li>
+<li>[ ] Flow-level description fits the PURPOSE/TRIGGER/OBJECTS/CHANGES template</li>
+<li>[ ] Get Records specifies field list (no full-record auto on wide objects)</li>
+<li>[ ] Multi-screen flows don't commit DML between screens unless intentional</li>
+<li>[ ] New flows deploy as Draft</li>
+<li>[ ] Bulk-test verified 251+ record behavior</li>
+</ul>
+<hr />
+<h2 id="metadata-landmines">Metadata landmines</h2>
+<blockquote>
+<p>Curated Salesforce reference: <a href="metadata-templates/README.md">docs/metadata-templates/</a> — 8 per-asset-type bundles (custom-object, custom-field, flexipage, permission-set, validation-rule, list-view, custom-tab, custom-application) with project deltas.</p>
+</blockquote>
+<p>These are silent deploy failures. Catch them while writing the XML, not after the deploy report.</p>
+<h3 id="permission-sets">Permission sets</h3>
+<ul>
+<li><strong>Required fields must NEVER appear in <code>fieldPermissions</code>.</strong> This silently fails the deploy. Check the field's <code>&lt;required&gt;</code> before adding to a perm set.</li>
+<li><strong>Tab visibility:</strong> three states only — Visible, Available, None.</li>
+<li><strong>Custom tabs</strong> need the <code>__c</code> suffix in the perm set entry; standard object tabs use the <code>standard-</code> prefix.</li>
+<li><strong><code>ViewAllData</code> / <code>ModifyAllData</code></strong> require security review — flag rather than auto-add.</li>
+<li><strong>Layered permission updates</strong> when a task adds new code:<ul>
+<li><code>classAccesses</code> for new Apex classes</li>
+<li><code>objectPermissions</code> for new objects</li>
+<li><code>fieldPermissions</code> for new fields (subject to required-field rule above)</li>
+</ul>
+</li>
+</ul>
+<h3 id="custom-objects">Custom objects</h3>
+<ul>
+<li><strong>New custom object MUST have a layout.</strong> Without one it's unusable in the UI. Include the layout-meta.xml in the deploy.</li>
+<li><strong>Sharing model:</strong> ReadWrite by default; ControlledByParent if Master-Detail relationships exist.</li>
+<li><strong>Max 2 Master-Detail relationships per object</strong> (Salesforce platform limit).</li>
+<li><strong>No <code>&lt;fullName&gt;</code> in the root element</strong> of the object-meta.xml.</li>
+<li><strong>No reserved words</strong> as API names.</li>
+</ul>
+<h3 id="custom-fields">Custom fields</h3>
+<ul>
+<li><strong>Universal requirements:</strong> every field needs <code>&lt;fullName&gt;</code>, <code>&lt;label&gt;</code>, <code>&lt;description&gt;</code>, and <code>&lt;inlineHelpText&gt;</code>.</li>
+<li><strong>Master-Detail fields:</strong> NEVER include <code>&lt;required&gt;</code>, <code>&lt;deleteConstraint&gt;</code>, or <code>&lt;lookupFilter&gt;</code>. They're always required and cascade by design.</li>
+<li><strong>Roll-Up Summary fields:</strong> NEVER add <code>&lt;precision&gt;</code> or <code>&lt;scale&gt;</code>. Both <code>&lt;summaryForeignKey&gt;</code> and <code>&lt;summarizedField&gt;</code> must use qualified format: <code>ChildObject__c.FieldName__c</code>.</li>
+<li><strong>Formula fields:</strong> <code>&lt;type&gt;</code> is the result type (e.g. <code>Number</code>), NEVER <code>"Formula"</code>. All formula content in <code>&lt;![CDATA[ ... ]]&gt;</code> wrappers.</li>
+<li><strong>Picklists:</strong> default to <code>&lt;restricted&gt;true&lt;/restricted&gt;</code> unless explicitly unrestricted.</li>
+<li><strong>Numeric:</strong> ensure <code>scale ≤ precision ≤ 18</code>.</li>
+</ul>
+<h3 id="validation-rules">Validation rules</h3>
+<ul>
+<li><strong><code>errorMessage</code></strong> ≤ 255 characters.</li>
+<li><strong><code>fullName</code></strong> ≤ 40 characters, letters/numbers/underscores only, no leading underscore, no consecutive underscores.</li>
+<li><strong>Common formula gotchas:</strong><ul>
+<li><code>TEXT()</code> should not wrap text fields — remove it.</li>
+<li><code>CASE()</code> requires an even number of parameters with a default value last.</li>
+<li><code>VALUE()</code> is only for text fields; remove for numbers.</li>
+<li>Date functions (<code>DAY</code>, <code>MONTH</code>) need Date fields, not Datetime.</li>
+<li><code>ISPICKVAL()</code> is required for picklist equality checks.</li>
+<li><code>ISCHANGED()</code> detects modifications.</li>
+</ul>
+</li>
+<li><strong>Formulas containing XML tags must use CDATA sections.</strong></li>
+</ul>
+<h3 id="flexipages">FlexiPages</h3>
+<ul>
+<li><strong>Must bootstrap via <code>sf template generate flexipage</code></strong> — can't author from scratch reliably (strict deploy validation on structure).</li>
+<li><strong>Field references</strong> use <code>Record.{FieldName}</code> format.</li>
+<li><strong>Unique identifiers and region names</strong> required across the entire file (no duplicates).</li>
+<li><strong>Multiple components in the same facet</strong> combine into ONE region with multiple <code>itemInstances</code>.</li>
+</ul>
+<h3 id="custom-tabs">Custom tabs</h3>
+<p>Three tab types, each with strict element allowlist (extra elements = deploy fail):</p>
+<ul>
+<li><strong>Object Tabs</strong> (<code>{ObjectApiName}.tab-meta.xml</code>): only <code>&lt;customObject&gt;true&lt;/customObject&gt;</code> + <code>&lt;motif&gt;</code>. Don't add <code>&lt;label&gt;</code>, <code>&lt;sobjectName&gt;</code>, <code>&lt;name&gt;</code>.</li>
+<li><strong>Web Tabs</strong> (<code>{TabName}.tab-meta.xml</code>): <code>&lt;customObject&gt;false&lt;/customObject&gt;</code>, <code>&lt;label&gt;</code>, <code>&lt;motif&gt;</code>, <code>&lt;url&gt;</code>, <code>&lt;urlEncodingKey&gt;UTF-8&lt;/urlEncodingKey&gt;</code>. Optional: <code>&lt;description&gt;</code>, <code>&lt;frameHeight&gt;</code>.</li>
+<li><strong>Visualforce Tabs</strong> (<code>{TabName}.tab-meta.xml</code>): <code>&lt;customObject&gt;false&lt;/customObject&gt;</code>, <code>&lt;label&gt;</code>, <code>&lt;motif&gt;</code>, <code>&lt;page&gt;</code>.</li>
+</ul>
+<p>Root element must be <code>&lt;CustomTab&gt;</code> with <code>xmlns="http://soap.sforce.com/2006/04/metadata"</code>.</p>
+<h3 id="custom-applications">Custom applications</h3>
+<p><code>navType</code> decision: <strong>Standard</strong> (default) for general business apps. <strong>Console</strong> only when the workflow requires managing multiple related records simultaneously in split-view / multi-tab workspace.</p>
+<h3 id="list-views">List views</h3>
+<ul>
+<li>File at <code>force-app/main/default/objects/&lt;ObjectName&gt;/listViews/&lt;fullName&gt;.listView-meta.xml</code>.</li>
+<li>Use correct API names for custom fields (<code>Status__c</code>), standard field names (<code>NAME</code>).</li>
+<li>Filter operations must match field types.</li>
+</ul>
+<h3 id="fls-strategy">FLS strategy</h3>
+<p>When adding a field, decide explicitly (BLOCKER if unspecified):</p>
+<ul>
+<li><strong>Permission-set vs. profile</strong> controlled. Match the org's existing convention for similar features.</li>
+<li>For new fields read by Apex/LWC, add <code>fieldPermissions</code> to the relevant permission set under <code>force-app/main/default/permissionsets/</code>.</li>
+<li>For fields written via DML, ensure they're editable (not just readable) for the target user.</li>
+</ul>
+<h3 id="managed-package-field-retrieval">Managed package field retrieval</h3>
+<p>If you need to reference a managed package field that isn't local:</p>
+<pre><code class="language-bash">sf project retrieve start --metadata &quot;CustomField:&lt;Object__c&gt;.&lt;Field__c&gt;&quot;
+</code></pre>
+<p>Do not use <code>--output-dir</code>. Do not query <code>FieldDefinition</code> via SOQL.</p>
+<hr />
+<h2 id="deployment-ordering">Deployment ordering</h2>
+<blockquote>
+<p>Curated Salesforce reference: <a href="deploy-references/README.md">docs/deploy-references/</a> — <code>sf project deploy</code> patterns, validation-only vs deploy-and-test, test-level selection, deploy-report parsing.</p>
+</blockquote>
+<p>When a single change touches multiple metadata types, deploy in this order to avoid dependency and FLS failures:</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Metadata</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Custom objects / custom fields</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Permission sets / permission set groups</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Apex classes / triggers</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Flows — deploy as <strong>Draft</strong></td>
+</tr>
+<tr>
+<td>5</td>
+<td>Flow activation / FlexiPage / layout / post-verify</td>
+</tr>
+</tbody>
+</table>
+<p>Why each step:</p>
+<ul>
+<li><strong>Objects/fields first</strong> — Apex, Flows, permsets, and FlexiPages all reference these by API name. Deploy them later and you'll get <code>INVALID_FIELD</code> / <code>INVALID_TYPE</code> failures from the dependent metadata.</li>
+<li><strong>Permsets before Apex</strong> — if Apex references a new field, the running deploy user needs FLS to compile the class. (FLS isn't enforced at compile time in every case, but it is for <code>WITH USER_MODE</code> queries and <code>@AuraEnabled</code> cacheable methods touching the field.)</li>
+<li><strong>Apex before Flows</strong> — Flows that invoke Apex actions fail validation if the class isn't deployed yet.</li>
+<li><strong>Flows as Draft, then activate</strong> — deploying an active Flow that fails its own validation can take down a running process. Deploy inactive, run anonymous Apex / a manual test, then activate as a separate deploy. Copado does this automatically; manual <code>sf project deploy start</code> does not.</li>
+<li><strong>FlexiPage / layout last</strong> — these reference fields, related lists, and components; they need everything else in place.</li>
+</ul>
+<p>For Copado user stories: the full-permission git setting is enabled, so Copado deploys perm sets as-is. Just promote the <code>PermissionSet</code> file alongside the new objects/fields it references — no need to manually expand the user story scope. (Historical: before that setting, Copado stripped perm-set XML by user-story scope; see <code>[feedback_copado_permset_scope]</code> for the obsolete failure mode.)</p>
+<hr />
+<h2 id="existing-project-frameworks-cite-dont-restate">Existing project frameworks (cite, don't restate)</h2>
+<p>These are the project's bedrock conventions. Don't reinvent — read <a href="../CLAUDE.md">CLAUDE.md</a> for the full context. Quick references:</p>
+<ul>
+<li><strong>Trigger framework:</strong> all triggers use <code>TriggerDispatcher</code> + <code>*TriggerHandler</code> (implements <code>TriggerInterface</code>) + <code>*TriggerHelper</code>. Recursion guards via static booleans (<code>stopRecurssionBefore</code>, etc.). Disable via <code>TriggerSettings__c</code> custom setting in tests.</li>
+<li><strong>Test data:</strong> <code>AMPTestDataFactory</code> with <code>build*</code> (no DML) / <code>create*</code> (inserts) convention. Disable triggers in <code>@TestSetup</code> via <code>TriggerSettings__c</code>.</li>
+<li><strong>Callouts:</strong> Named Credentials (<code>Workato</code> / <code>WorkatoSandbox</code>, <code>Gainsight</code> / <code>GainsightSandbox</code>, etc.). Sandbox routing via <code>isSandbox()</code> helper. <code>ApiCalloutLogger.flush()</code> after the last callout in a queueable.</li>
+<li><strong>Auth taxonomy:</strong> <a href="salesforce-taxonomy.md">docs/salesforce-taxonomy.md</a> is authoritative for field definitions, metric calculations, GTM segmentation. Confirm fields under <code>force-app/main/default/objects/&lt;Object&gt;/fields/</code> before relying on names.</li>
+</ul>
+<hr />
+<h2 id="reuse-and-pattern-continuity">Reuse and pattern continuity</h2>
+<p>The fastest way to introduce bugs is to write a parallel implementation of something that already exists. Before adding new code, scan for existing helpers, services, or patterns and use them.</p>
+<h3 id="reuse-before-reinventing">Reuse before reinventing</h3>
+<ul>
+<li><strong>Helpers / utilities:</strong> Grep the codebase before writing a new helper. Examples: <code>AMPTestDataFactory</code> (test data), <code>ApiCalloutLogger</code> (callout audit), <code>TriggerDispatcher</code> (trigger orchestration), <code>isSandbox()</code> (env routing). If one exists, use it — don't write a parallel version.</li>
+<li><strong>Patterns:</strong> if the codebase has an established way to do something (trigger framework, Workato chunked queueable, named-credential <code>isSandbox()</code> switch), follow it. Don't introduce a new approach without an explicit reason.</li>
+<li><strong>Cite the existing example when reviewing:</strong> a "pattern drift" finding without a concrete <code>file:line</code> reference to the established approach is not actionable. Always quote the existing example.</li>
+</ul>
+<h3 id="intra-change-dry">Intra-change DRY</h3>
+<ul>
+<li>If the same logic appears three times in a single change (three similar branches, three near-duplicate methods, three repeated SOQL queries), collapse it into one helper. Two is a coincidence; three is duplication.</li>
+<li>If a new helper is being added, ask whether it should live as a method on an existing utility class instead of standalone.</li>
+</ul>
+<h3 id="when-a-parallel-approach-is-justified">When a parallel approach IS justified</h3>
+<p>Sometimes divergence is intentional (different security model, different scale envelope, deprecation in progress). In those cases the change must include a one-line comment explaining why the existing approach was not reused, so future readers don't try to merge them.</p>
+<hr />
+<h2 id="how-this-playbook-is-used">How this playbook is used</h2>
+<table>
+<thead>
+<tr>
+<th>Entry path</th>
+<th>How the playbook fires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Conversational ("hey add Foo__c to Account")</td>
+<td>I read CLAUDE.md → CLAUDE.md cites this playbook → I apply the relevant section while writing</td>
+</tr>
+<tr>
+<td><code>sfdc-quick-build</code> skill</td>
+<td>Step 5 ("Implement the changes") cites this playbook</td>
+</tr>
+<tr>
+<td><code>sfdc-guided-build</code> skill</td>
+<td>Step 4 ("Implement the changes") cites this playbook</td>
+</tr>
+<tr>
+<td><code>/sfdc-drive-build</code> workers</td>
+<td>Each worker's contract cites this playbook; orchestrator-loop verifies adherence via two-stage review</td>
+</tr>
+</tbody>
+</table>
+<p>If a rule belongs in this playbook but isn't here, add it. If a rule is duplicated in an agent/skill file, prefer the playbook version (single source of truth) and slim the agent reference to a citation.</p>
+
+</div>
+</body>
+</html>

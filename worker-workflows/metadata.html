@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-metadata-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar metadata">
+            <h1>
+                🟫 sfdc-metadata-worker
+                <span class="sub"
+                    >Schema/metadata worker — objects, fields, validation rules, layouts, perm sets, record types,
+                    flexipages, tabs, applications, list views</span
+                >
+            </h1>
+            <div class="lane">
+                lane:
+                <code
+                    >force-app/main/default/{objects,permissionsets,layouts,validationRules,recordTypes,flexipages,tabs,applications}/</code
+                >
+            </div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-metadata-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Write · Edit · Glob · Grep · Bash</code>.
+        </div>
+
+        <p>
+            Authors and edits XML metadata. Watches the silent-deploy-failure landmines that the platform doesn't warn
+            you about. Flows are NOT in this lane — they have their own worker. Apex / LWC are also out of lane.
+        </p>
+
+        <div class="callout">
+            <strong>Most-missed landmines (re-read every task):</strong> required fields never in
+            <code>fieldPermissions</code>; Master-Detail never with <code>&lt;required&gt;</code> /
+            <code>&lt;deleteConstraint&gt;</code> / <code>&lt;lookupFilter&gt;</code>; Roll-Up Summary never with
+            <code>&lt;precision&gt;</code> / <code>&lt;scale&gt;</code>, uses qualified
+            <code>Child__c.Field__c</code> format; Formula <code>&lt;type&gt;</code> is the RESULT type (not "Formula"),
+            body in <code>&lt;![CDATA[ ... ]]&gt;</code>; Picklists default
+            <code>&lt;restricted&gt;true&lt;/restricted&gt;</code>; Numeric: <code>scale ≤ precision ≤ 18</code>;
+            Validation rules: <code>errorMessage</code> ≤ 255 chars, <code>fullName</code> ≤ 40 chars; FlexiPages:
+            bootstrap via <code>sf template generate flexipage</code> — can't author from scratch; Custom tabs: strict
+            element allowlist per tab type.
+        </div>
+
+        <div class="shared">
+            <h2>0 · Always-on inputs (every task)</h2>
+            <div class="shared-grid">
+                <div class="shared-card">
+                    <div class="file">Task brief from /sfdc-drive-build</div>
+                    <div class="desc">
+                        Task ID, ACs, success criterion, asset type, target object, pre-fetched neighboring metadata.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">CLAUDE.md → Always-on workflow rules</div>
+                    <div class="desc">Goal-driven execution · fresh evidence · two-stage review.</div>
+                </div>
+                <div class="shared-card">
+                    <div class="file"><a href="../playbook.html">docs/sfdc-playbook.md</a> (fallback only)</div>
+                    <div class="desc">Metadata landmines · existing project frameworks.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow">
+            <div class="step" data-n="1">
+                <h3>Receive task <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>orchestrator-supplied: task ID, ACs, asset type, target object, pre-fetched XML</li>
+                </ul>
+                <p class="note">
+                    Ambiguous (FLS strategy, permission set choice, layout assignment, data type/length, sharing model)
+                    → BLOCKER.
+                </p>
+            </div>
+
+            <div class="step" data-n="2">
+                <h3>Read authoritative rules <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>brief's <code>## Playbook excerpts</code> (preferred)</li>
+                    <li>fallback: <a href="../playbook.html#metadata-landmines">docs/sfdc-playbook.md#metadata-landmines</a></li>
+                    <li>fallback: <a href="../playbook.html#existing-project-frameworks-cite-dont-restate">docs/sfdc-playbook.md#existing-project-frameworks-cite-dont-restate</a></li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="3">
+                <h3>
+                    Read per-asset-type SKILL.md <span class="tag read">read</span>
+                    <span class="aside">(one matching your task)</span>
+                </h3>
+                <ul class="files">
+                    <li>docs/metadata-templates/README.md — Amplitude deltas across all 8 subdirs</li>
+                    <li>docs/metadata-templates/custom-object/SKILL.md</li>
+                    <li>docs/metadata-templates/custom-field/SKILL.md</li>
+                    <li>docs/metadata-templates/flexipage/SKILL.md</li>
+                    <li>docs/metadata-templates/permission-set/SKILL.md</li>
+                    <li>docs/metadata-templates/validation-rule/SKILL.md</li>
+                    <li>docs/metadata-templates/list-view/SKILL.md</li>
+                    <li>docs/metadata-templates/custom-tab/SKILL.md</li>
+                    <li>docs/metadata-templates/custom-application/SKILL.md</li>
+                </ul>
+                <p class="note">
+                    <code>layout/</code> and <code>record-type/</code> are not yet mined — author from raw XML and the
+                    platform docs if your task needs them.
+                </p>
+            </div>
+
+            <div class="step" data-n="4">
+                <h3>Verify org target <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">sf config get target-org</li>
+                    <li class="gate">must be <code>spencerdev</code> — else BLOCKER</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="5">
+                <h3>
+                    Bootstrap FlexiPages — never hand-author <span class="tag shell">shell</span>
+                    <span class="aside">(flexipage tasks only)</span>
+                </h3>
+                <ul class="files">
+                    <li class="shell">sf project retrieve start --metadata "FlexiPage:&lt;Name&gt;"</li>
+                    <li class="shell">— or — sf template generate flexipage</li>
+                </ul>
+                <p class="note">
+                    <strong>FlexiPage foot-gun:</strong> region/component ordering and ID dependencies fail silently on
+                    hand-written variants. Retrieve or bootstrap first, then edit.
+                </p>
+            </div>
+
+            <div class="step" data-n="6">
+                <h3>
+                    Retrieve managed-package fields if needed <span class="tag shell">shell</span>
+                    <span class="aside">(only when local copy missing)</span>
+                </h3>
+                <ul class="files">
+                    <li class="shell">
+                        sf project retrieve start --metadata "CustomField:&lt;Object__c&gt;.&lt;Field__c&gt;"
+                    </li>
+                </ul>
+                <p class="note">
+                    Do not use <code>--output-dir</code>. Do not query <code>FieldDefinition</code> via SOQL. After
+                    retrieval, read the <code>.field-meta.xml</code>.
+                </p>
+            </div>
+
+            <div class="step" data-n="7">
+                <h3>Implement <span class="tag write">write</span></h3>
+                <ul class="files">
+                    <li class="write">force-app/main/default/objects/&lt;Object&gt;/...</li>
+                    <li class="write">force-app/main/default/permissionsets/&lt;PermSet&gt;.permissionset-meta.xml</li>
+                    <li class="write">force-app/main/default/layouts/&lt;Object&gt;-&lt;Layout&gt;.layout-meta.xml</li>
+                    <li class="write">force-app/main/default/flexipages/&lt;Page&gt;.flexipage-meta.xml</li>
+                </ul>
+                <p class="note">
+                    New custom objects always ship with a layout. New fields always ship with
+                    <code>fieldPermissions</code>
+                    entries on the relevant perm set(s) — including ALL referenced fields + objects, not just the perm
+                    set XML itself (Copado strips perm-set scope by user-story scope).
+                </p>
+            </div>
+
+            <div class="step" data-n="8">
+                <h3>Deploy targeted — all related metadata together <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">
+                        sf project deploy start --source-dir &lt;object dir&gt; --source-dir &lt;layout&gt; --source-dir
+                        &lt;perm-set&gt;
+                    </li>
+                </ul>
+                <p class="note">
+                    Include all related metadata in ONE deploy so the org sees a consistent state. Perm set referencing
+                    a class/field that doesn't exist yet → deploy them together.
+                </p>
+            </div>
+
+            <div class="step" data-n="9">
+                <h3>Parse deploy result <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">sf project deploy report --job-id &lt;id&gt; (on failure)</li>
+                </ul>
+                <p class="note">
+                    Common gotchas: perm set referencing a class/field not yet deployed; layout referencing a field not
+                    in the field set; required field added to existing object with no default value; required field in
+                    <code>fieldPermissions</code> (silent failure); FlexiPage authored from scratch instead of
+                    bootstrapped.
+                </p>
+            </div>
+
+            <div class="step" data-n="10">
+                <h3>Commit per-task <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git add &lt;explicit paths only&gt;</li>
+                    <li class="shell">git commit -m "[T-NNN] &lt;description&gt;"</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="11">
+                <h3>Verify before claiming DONE <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>deploy <code>Status: Succeeded</code></li>
+                    <li class="shell">ls force-app/.../&lt;file&gt; — confirm each new file exists on disk</li>
+                    <li>git log -1 for commit SHA</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="12">
+                <h3>Return DONE / BLOCKER / FAILED <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li>DONE: task ID · files touched · deploy ID + status · commit SHA · playbook anchors cited</li>
+                    <li>BLOCKER: <code>&lt;q&gt; | CONTEXT | NEED</code> · revert · no commit</li>
+                    <li>FAILED: <code>&lt;reason&gt;</code> · revert · no commit</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Receiving code review findings (CHANGES_REQUESTED)</h2>
+        <div class="flow">
+            <div class="step" data-n="A">
+                <h3>Read every finding before editing <span class="tag read">read</span></h3>
+                <p class="note">
+                    Common metadata findings: missing layout, missing <code>fieldPermissions</code> /
+                    <code>objectPermissions</code> / <code>classAccesses</code>, required field with no default,
+                    profile-vs-permset mismatch with org convention, missing description/inlineHelpText.
+                </p>
+            </div>
+            <div class="step" data-n="B">
+                <h3>Follow-up commit on top <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git commit -m "[T-NNN] review fixes &lt;round&gt;"</li>
+                </ul>
+            </div>
+            <div class="step" data-n="C">
+                <h3>Re-run verification gate (deploy succeeds, files exist) <span class="tag shell">shell</span></h3>
+            </div>
+            <div class="step" data-n="D">
+                <h3>Report DONE with finding-by-finding response <span class="tag gate">gate</span></h3>
+            </div>
+        </div>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never deploy to non-<code>spencerdev</code> orgs</td>
+                <td>Prod is read-only.</td>
+            </tr>
+            <tr>
+                <td>Never push or merge</td>
+                <td>Feature branch only.</td>
+            </tr>
+            <tr>
+                <td>Never <code>git add -A</code> / <code>git add .</code></td>
+                <td>Stage by explicit path.</td>
+            </tr>
+            <tr>
+                <td>Never modify <code>.pm/</code>, Apex, LWC, or flows</td>
+                <td>Wrong-lane → BLOCKER.</td>
+            </tr>
+            <tr>
+                <td>Never add a new custom object without a layout</td>
+                <td>Object deploy succeeds but org is unusable.</td>
+            </tr>
+            <tr>
+                <td>Never include required fields in <code>fieldPermissions</code></td>
+                <td>Silent deploy failure — the playbook's #1 metadata landmine.</td>
+            </tr>
+            <tr>
+                <td>Never hand-author a FlexiPage from scratch</td>
+                <td>Region/component ID dependencies fail silently. Retrieve or bootstrap first.</td>
+            </tr>
+            <tr>
+                <td>Never stall waiting for input</td>
+                <td>Ambiguity → BLOCKER → return.</td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>
+                        Create / edit custom objects, fields, validation rules, layouts, perm sets, record types,
+                        flexipages, tabs, applications, list views
+                    </li>
+                    <li>Retrieve managed-package fields and add them to perm sets</li>
+                    <li>Bootstrap FlexiPages and then edit retrieved XML</li>
+                    <li>Deploy related metadata together targeted to <code>spencerdev</code></li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Edit Apex / LWC / flows (flows have their own worker)</li>
+                    <li>Hand-author FlexiPages from scratch</li>
+                    <li>Add required fields to <code>fieldPermissions</code> (silent failure)</li>
+                    <li>Add a custom object without a layout</li>
+                    <li>Use <code>--output-dir</code> on managed-field retrieve, or query FieldDefinition via SOQL</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers</h2>
+            <div class="related-grid">
+                <a class="related-card review" href="review.html">
+                    <div class="name">Review worker →</div>
+                    <div class="why">
+                        Runs after every metadata DONE — spec then quality. Quality mode walks the landmines.
+                    </div>
+                </a>
+                <a class="related-card flow" href="flow.html">
+                    <div class="name">Flow worker →</div>
+                    <div class="why">Flows reference fields — metadata must land first or the flow deploy fails.</div>
+                </a>
+                <a class="related-card lwc" href="lwc.html">
+                    <div class="name">LWC worker →</div>
+                    <div class="why">FlexiPage placement and field-set tweaks often pair with new LWC deployments.</div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

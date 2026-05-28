@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-review-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar review">
+            <h1>
+                🟦 sfdc-review-worker
+                <span class="sub">Read-only review — runs after every builder DONE in one of two modes</span>
+            </h1>
+            <div class="lane">
+                lane: <code>read-only</code> · invoked by orchestrator with <code>mode: spec</code> or
+                <code>mode: quality</code>
+            </div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-review-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Glob · Grep · Bash</code> (no Write / Edit).
+        </div>
+
+        <p>
+            Senior-developer single-pass review on one task's output. Orchestrator invokes in exactly one mode — never
+            both, never combined. Orchestrator runs <code>spec</code> first; if APPROVED, runs <code>quality</code>; if
+            both APPROVED, the task is done. Either CHANGES_REQUESTED re-delegates back to the builder.
+        </p>
+
+        <div class="callout read-only">
+            <strong>Mode discipline (the lane rule):</strong> two-stage review only works if each pass stays in its
+            lane. Spec reviewers don't grade style; quality reviewers don't re-check ACs. Drift breaks the gate.
+        </div>
+
+        <div class="shared" style="border-left-color: var(--review)">
+            <h2 style="color: var(--review)">Common entry — both modes</h2>
+            <div class="shared-grid">
+                <div class="shared-card">
+                    <div class="file">mode (<code>spec</code> or <code>quality</code>)</div>
+                    <div class="desc">
+                        Determines what you check and what you ignore. Read this first — drifting modes breaks the gate.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">task brief from <code>.pm/TODO.md</code></div>
+                    <div class="desc">
+                        Task ID, description, ACs, success criterion. The contract the builder was trying to satisfy.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">files touched + deploy ID + commit SHA</div>
+                    <div class="desc">
+                        Orchestrator hands these over. Inspect via
+                        <code>git diff &lt;sha&gt;~1 &lt;sha&gt; -- &lt;paths&gt;</code>.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">relevant section of <code>.pm/CONTEXT.md</code></div>
+                    <div class="desc">Surrounding-code context the reviewer needs to judge call sites.</div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">deploy report + test results (optional)</div>
+                    <div class="desc">
+                        For mode: spec — confirm success criterion passed. For quality — spot-check test quality, not
+                        coverage %.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow two-col">
+            <!-- mode: spec -->
+            <div>
+                <div class="col-head spec">
+                    <h2>📋 mode: spec</h2>
+                    <div class="lane">question: <b>does the implementation meet the ACs?</b></div>
+                </div>
+
+                <div class="flow">
+                    <div class="step" data-n="1">
+                        <h3>Read the diff <span class="tag shell">shell</span> <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li class="shell">git diff &lt;sha&gt;~1 &lt;sha&gt; -- &lt;files&gt;</li>
+                            <li class="shell">git log --oneline --grep "T-NNN" -10 (if review-fix follow-ups exist)</li>
+                        </ul>
+                        <p class="note">Read changed lines, not full files. Full-file reads miss what's new.</p>
+                    </div>
+
+                    <div class="step" data-n="2">
+                        <h3>Walk the ACs one at a time <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>For each AC: locate where the implementation addresses it</li>
+                            <li>Quote the file + line</li>
+                            <li>Missing AC → BLOCKER</li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="3">
+                        <h3>Check scope <span class="tag gate">gate</span></h3>
+                        <ul class="files">
+                            <li>Did the builder solve a different problem than stated? → BLOCKER (scope drift)</li>
+                            <li>Did files outside the target paths change? → flag (also a quality finding)</li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="4">
+                        <h3>
+                            Run / verify the success criterion <span class="tag shell">shell</span>
+                            <span class="tag gate">gate</span>
+                        </h3>
+                        <ul class="files">
+                            <li class="shell">Run the verification command from the task</li>
+                            <li class="gate">Output must match the expected result quoted in the task</li>
+                            <li>Mismatch → BLOCKER (regardless of deploy-Succeeded)</li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="5">
+                        <h3>Edge cases mentioned in the spec <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>"when X is null" / "if user lacks permission" / "bulk insert of 250 records"</li>
+                            <li>Each spec-named edge case must have a test or code path</li>
+                            <li>Missing edge-case → MAJOR</li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="6">
+                        <h3>What NOT to flag here</h3>
+                        <ul class="files">
+                            <li>Style nits (naming, formatting, comments)</li>
+                            <li>Playbook violations (FLS, sharing, USER_MODE, bulkification)</li>
+                            <li>Pattern drift (e.g. "should use TriggerDispatcher")</li>
+                            <li>Test coverage %</li>
+                        </ul>
+                        <p class="note">
+                            If found, note "Suggested for quality review" — don't make it a finding here.
+                        </p>
+                    </div>
+
+                    <div class="step" data-n="7">
+                        <h3>Return APPROVED or CHANGES_REQUESTED <span class="tag gate">gate</span></h3>
+                        <ul class="files">
+                            <li>APPROVED → orchestrator runs <b>mode: quality</b> next</li>
+                            <li>CHANGES_REQUESTED → orchestrator re-delegates to builder with findings</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- mode: quality -->
+            <div>
+                <div class="col-head quality">
+                    <h2>⚙️ mode: quality</h2>
+                    <div class="lane">question: <b>does the code follow the playbook?</b></div>
+                </div>
+
+                <div class="flow">
+                    <div class="step" data-n="1">
+                        <h3>Read the diff <span class="tag shell">shell</span> <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li class="shell">git diff &lt;sha&gt;~1 &lt;sha&gt; -- &lt;files&gt;</li>
+                        </ul>
+                        <p class="note">Assume spec compliance is already settled — that's why spec ran first.</p>
+                    </div>
+
+                    <div class="step" data-n="2">
+                        <h3>Read playbook excerpts <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>brief's <code>## Playbook excerpts</code> section (preferred)</li>
+                            <li>fallback: <a href="../playbook.html">docs/sfdc-playbook.md</a> + docs/sfdc-playbook-anchors.md</li>
+                        </ul>
+                        <p class="note">Walk the diff against the relevant sections per change type below.</p>
+                    </div>
+
+                    <div class="step" data-n="3">
+                        <h3>Apex changes — check these sections <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>
+                                #apex-hard-stops (USER_MODE, no @future, no hardcoded IDs, bind vars, sharing keyword,
+                                LIMIT)
+                            </li>
+                            <li>#apex-authoring-patterns (naming, layering, async choice)</li>
+                            <li>#soql-discipline (selectivity, security mode, bulk patterns)</li>
+                            <li>
+                                #apex-test-discipline (one behavior per test, 251+ records, Assert class, exact values)
+                            </li>
+                            <li>
+                                #existing-project-frameworks (TriggerDispatcher, AMPTestDataFactory, isSandbox,
+                                ApiCalloutLogger.flush)
+                            </li>
+                            <li>
+                                Test classes: docs/apex-test-templates/README.md "Mandatory project deltas" as secondary
+                                sweep
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="4">
+                        <h3>LWC changes — check these sections <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>
+                                #lwc-hard-stops (mutating @api, @track on primitives, if:true, index keys, reactive
+                                params, cleanup, .slds-* overrides)
+                            </li>
+                            <li>#lwc-project-specifics (color tokens, native button, lightningCommunity__Page trap)</li>
+                            <li>
+                                #lwc-wire-events-flow-jest-slds-2 (refreshApex, event encapsulation,
+                                FlowAttributeChangeEvent, Jest hardening)
+                            </li>
+                            <li>
+                                If <code>.claude/lwc_design/&lt;name&gt;.md</code> exists → check PICKLES coverage
+                                (P/I/C/K/L/E/S each)
+                            </li>
+                            <li>
+                                docs/lwc-templates/references/scoring-and-testing.md (165-pt rubric) as secondary sweep
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="5">
+                        <h3>Flow / Metadata changes <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>
+                                Flow: #flow-hard-stops, #flow-conventions-and-performance, flow anti-pattern checklist
+                            </li>
+                            <li>
+                                Metadata: #metadata-landmines (required fields/fieldPermissions, MD constraints, formula
+                                CDATA, picklist restricted, FlexiPage bootstrap, Custom Tab allowlist)
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="6">
+                        <h3>General quality sweep <span class="tag read">read</span></h3>
+                        <ul class="files">
+                            <li>Excess comments / docstrings / error-handling beyond what task required</li>
+                            <li>Files modified outside worker's lane (apex worker editing LWC = BLOCKER)</li>
+                            <li><code>--no-verify</code> or hook-skip flags in any commit</li>
+                            <li>
+                                #reuse-and-pattern-continuity — reuse existing helpers; 3+ duplications must collapse
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="7">
+                        <h3>What NOT to flag here</h3>
+                        <ul class="files">
+                            <li>Whether the implementation meets the ACs (spec's job)</li>
+                            <li>Missing features called out in the ticket (spec's job)</li>
+                            <li>Test count or coverage % (orchestrator's gate)</li>
+                        </ul>
+                    </div>
+
+                    <div class="step" data-n="8">
+                        <h3>Return APPROVED or CHANGES_REQUESTED <span class="tag gate">gate</span></h3>
+                        <ul class="files">
+                            <li>APPROVED → task is done</li>
+                            <li>CHANGES_REQUESTED → orchestrator re-delegates to builder with findings</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2>Severity rubric (both modes)</h2>
+        <table>
+            <tr>
+                <th>Severity</th>
+                <th>Definition</th>
+                <th>Outcome</th>
+            </tr>
+            <tr>
+                <td><b style="color: var(--gate)">BLOCKER</b></td>
+                <td>Would break prod, fail tests/deploy, violate org policy, or miss the AC entirely</td>
+                <td>Must be fixed before task is <code>done</code></td>
+            </tr>
+            <tr>
+                <td><b style="color: var(--warn)">MAJOR</b></td>
+                <td>Pattern violation, FLS/perm-set gap, missing test, unrelated edit</td>
+                <td>Should be fixed before task is <code>done</code></td>
+            </tr>
+            <tr>
+                <td><b style="color: var(--text-dim)">MINOR</b></td>
+                <td>Style nit, optional improvement</td>
+                <td>Orchestrator may log and proceed</td>
+            </tr>
+        </table>
+
+        <div class="callout">
+            <strong>Loopback to builder:</strong> on CHANGES_REQUESTED, orchestrator hands findings back to the builder
+            worker. The builder reads every finding before changing code · addresses BLOCKER + MAJOR (justifies MINOR
+            dismissals) · no scope creep · follow-up commit on top (never amend) titled
+            <code>[T-NNN] review fixes &lt;round&gt;</code> · re-runs the full verification gate · reports DONE with
+            finding-by-finding response. Then back through review — possibly multiple rounds until both modes APPROVE.
+        </div>
+
+        <h2>Mode discipline — the lane rule</h2>
+        <table>
+            <tr>
+                <th style="width: 50%">In mode: spec</th>
+                <th>In mode: quality</th>
+            </tr>
+            <tr>
+                <td>✓ Walk every AC, locate implementation</td>
+                <td>✓ Walk diff against playbook sections</td>
+            </tr>
+            <tr>
+                <td>✓ Run the success criterion verification command</td>
+                <td>✓ Cite playbook anchors in every finding</td>
+            </tr>
+            <tr>
+                <td>✓ Confirm spec-named edge cases have tests/paths</td>
+                <td>✓ Spot-check test quality (one behavior, Assert class, exact values)</td>
+            </tr>
+            <tr>
+                <td>✗ Don't flag FLS, sharing, USER_MODE, bulkification</td>
+                <td>✗ Don't re-check whether ACs were met</td>
+            </tr>
+            <tr>
+                <td>✗ Don't flag style nits, naming, comments</td>
+                <td>✗ Don't flag missing features called out in the ticket</td>
+            </tr>
+            <tr>
+                <td>✗ Don't grade test coverage %</td>
+                <td>✗ Don't grade test coverage % (orchestrator's gate)</td>
+            </tr>
+        </table>
+        <div class="callout">
+            <strong>Straddle rule:</strong> if a finding straddles both lanes (e.g. "bulk path is missing AND the spec
+            calls for bulk handling"), file it under the current mode and add "see also: other-mode review may catch
+            related issue." Don't try to fix the cross-mode issue in one pass.
+        </div>
+
+        <h2>Output format (both modes)</h2>
+        <table>
+            <tr>
+                <th style="width: 50%">APPROVED</th>
+                <th>CHANGES_REQUESTED</th>
+            </tr>
+            <tr>
+                <td>
+                    <code>APPROVED (mode: spec | quality)</code><br />
+                    Summary: 1–2 sentences confirming what passes.<br />
+                    Files reviewed: list.<br />
+                    Notes (optional): observations orchestrator can log.
+                </td>
+                <td>
+                    <code>CHANGES_REQUESTED (mode: spec | quality)</code><br />
+                    Findings: numbered list, each
+                    <code>[BLOCKER | MAJOR | MINOR] file:line — what's wrong — what to do</code>.<br />
+                    Suggested next step: re-delegate to &lt;worker&gt; OR queue Q-NNN for human decision.
+                </td>
+            </tr>
+        </table>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never edit code</td>
+                <td>Even one-line fixes — surface, don't patch. Read-only worker.</td>
+            </tr>
+            <tr>
+                <td>Never modify <code>.pm/</code> files</td>
+                <td>Orchestrator's lane.</td>
+            </tr>
+            <tr>
+                <td>Stay in your assigned mode</td>
+                <td>Don't drift. Spec reviewers don't grade style; quality reviewers don't re-check requirements.</td>
+            </tr>
+            <tr>
+                <td>Don't review your own previous reviews</td>
+                <td>On a 2nd pass after CHANGES_REQUESTED, focus on whether prior findings were addressed.</td>
+            </tr>
+            <tr>
+                <td>Be specific</td>
+                <td>
+                    "Missing test coverage" isn't actionable. "ProjectController.calculateBurn() has no test path —
+                    suggest positive + negative cases" is.
+                </td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>Read the diff and the surrounding code</li>
+                    <li>Run the success criterion verification command (mode: spec)</li>
+                    <li>Cite playbook anchors and project-delta sources</li>
+                    <li>Return APPROVED or CHANGES_REQUESTED with severity-tagged findings</li>
+                    <li>Suggest re-delegation target OR queueing a question for human decision</li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Edit code (no <code>Write</code> / <code>Edit</code> tool)</li>
+                    <li>Run both modes in one pass (orchestrator runs them serially)</li>
+                    <li>Drift between modes (spec checks ACs; quality checks playbook)</li>
+                    <li>Re-grade test coverage (orchestrator's gate)</li>
+                    <li>Modify <code>.pm/</code> orchestrator state</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers (review gates all 4 builders)</h2>
+            <div class="related-grid">
+                <a class="related-card apex" href="apex.html">
+                    <div class="name">Apex worker →</div>
+                    <div class="why">
+                        Every Apex DONE goes through spec then quality. Receives findings back if CHANGES_REQUESTED.
+                    </div>
+                </a>
+                <a class="related-card lwc" href="lwc.html">
+                    <div class="name">LWC worker →</div>
+                    <div class="why">
+                        Quality mode checks PICKLES coverage if a design doc exists. 165-pt rubric as secondary sweep.
+                    </div>
+                </a>
+                <a class="related-card flow" href="flow.html">
+                    <div class="name">Flow worker →</div>
+                    <div class="why">Quality mode walks the flow anti-pattern checklist + fault-path coverage.</div>
+                </a>
+                <a class="related-card metadata" href="metadata.html">
+                    <div class="name">Metadata worker →</div>
+                    <div class="why">
+                        Quality mode walks the metadata landmines (required/fieldPermissions, Roll-Up, FlexiPage
+                        bootstrap).
+                    </div>
+                </a>
+                <a class="related-card research" href="research.html">
+                    <div class="name">Research worker →</div>
+                    <div class="why">
+                        Both are read-only — research feeds context that review uses to judge call sites.
+                    </div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

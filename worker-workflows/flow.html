@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-flow-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar flow">
+            <h1>
+                🟩 sfdc-flow-worker
+                <span class="sub"
+                    >Salesforce Flow implementation worker — record-triggered, screen, autolaunched, scheduled,
+                    platform-event</span
+                >
+            </h1>
+            <div class="lane">lane: <code>force-app/main/default/flows/</code></div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-flow-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Write · Edit · Glob · Grep · Bash</code>.
+        </div>
+
+        <p>
+            Authors flows via Flow Builder (not raw XML for structural changes), deploys as <b>Draft</b>, bulk-verifies
+            against 251+ records before requesting activation. Never auto-activates — activation is a separate, explicit
+            user-approval step. Never touches Apex / LWC / objects / fields / permission sets.
+        </p>
+
+        <div class="callout">
+            <strong>Critical:</strong> every new flow or new version deploys with
+            <code>&lt;status&gt;Draft&lt;/status&gt;</code>. Activation requires explicit user approval. Auto-activation
+            = BLOCKER.
+        </div>
+
+        <div class="shared">
+            <h2>0 · Always-on inputs (every task)</h2>
+            <div class="shared-grid">
+                <div class="shared-card">
+                    <div class="file">Task brief from /sfdc-drive-build</div>
+                    <div class="desc">
+                        Task ID, ACs, success criterion, target objects/fields, pre-fetched flow XML if editing
+                        existing.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">CLAUDE.md → Always-on workflow rules</div>
+                    <div class="desc">Goal-driven execution · fresh evidence · two-stage review.</div>
+                </div>
+                <div class="shared-card">
+                    <div class="file"><a href="../playbook.html">docs/sfdc-playbook.md</a> (fallback only)</div>
+                    <div class="desc">
+                        Flow hard-stops · conventions and performance · when NOT to build a flow + flow-type decision
+                        table.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow">
+            <div class="step" data-n="1">
+                <h3>Receive task <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>orchestrator-supplied: task ID, ACs, success criterion, target objects/fields</li>
+                </ul>
+                <p class="note">
+                    Ambiguous (flow type, entry criteria, when-to-run, expected output variable) → BLOCKER.
+                </p>
+            </div>
+
+            <div class="step" data-n="2">
+                <h3>Read authoritative rules <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>brief's <code>## Playbook excerpts</code> (preferred)</li>
+                    <li>fallback: <a href="../playbook.html#flow-hard-stops">docs/sfdc-playbook.md#flow-hard-stops</a></li>
+                    <li>fallback: <a href="../playbook.html#flow-conventions-and-performance">docs/sfdc-playbook.md#flow-conventions-and-performance</a></li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="3">
+                <h3>
+                    Read starter scaffolds + Flow references <span class="tag read">read</span>
+                    <span class="aside">(new flows only)</span>
+                </h3>
+                <ul class="files">
+                    <li>docs/flow-templates/README.md — Amplitude deltas</li>
+                    <li>
+                        docs/flow-templates/SKILL.md — Salesforce platform nuance (flow types, decision logic, fault
+                        connectors, scheduled paths)
+                    </li>
+                </ul>
+                <p class="note">
+                    Project deltas include <code>TriggerSettings__c</code> bypass discipline, record-triggered vs
+                    autolaunched choice, three-tier error handling, deploy + bulk verification.
+                </p>
+            </div>
+
+            <div class="step" data-n="4">
+                <h3>Verify org target <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">sf config get target-org</li>
+                    <li class="gate">must be <code>spencerdev</code> — else BLOCKER</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="5">
+                <h3>Verify referenced fields and objects exist <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">
+                        ls force-app/main/default/objects/&lt;Object&gt;/fields/&lt;Field&gt;.field-meta.xml
+                    </li>
+                </ul>
+                <p class="note">
+                    If the task references a field that isn't deployed yet, BLOCKER — wait for the metadata worker to
+                    land it. Don't author flow XML that points at a phantom field.
+                </p>
+            </div>
+
+            <div class="step" data-n="6">
+                <h3>Build in Flow Builder, not raw XML <span class="tag write">write</span></h3>
+                <ul class="files">
+                    <li class="write">force-app/main/default/flows/&lt;FlowName&gt;.flow-meta.xml</li>
+                </ul>
+                <p class="note">
+                    Hand-editing flow XML is allowed for SMALL textual changes only (description, label, version notes).
+                    Structural changes — adding elements, reordering connectors, modifying decisions — go through Flow
+                    Builder. If the task implies hand-editing XML to add a new element, BLOCKER + ask for confirmation.
+                </p>
+            </div>
+
+            <div class="step" data-n="7">
+                <h3>Deploy as Draft <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">
+                        sf project deploy start --source-dir force-app/main/default/flows/&lt;FlowName&gt;.flow-meta.xml
+                    </li>
+                    <li class="gate"><code>&lt;status&gt;Draft&lt;/status&gt;</code> required — never auto-activate</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="8">
+                <h3>
+                    Bulk-test before requesting activation <span class="tag shell">shell</span>
+                    <span class="tag gate">gate</span>
+                </h3>
+                <ul class="files">
+                    <li>For record-triggered or batchable flows: validate against 251+ records</li>
+                    <li class="shell">anonymous Apex script inserting/updating a batch · inspect results</li>
+                    <li class="gate">document the bulk-test in the DONE report</li>
+                </ul>
+                <p class="note">Single-record happy path is not enough — flows hit limits at scale.</p>
+            </div>
+
+            <div class="step" data-n="9">
+                <h3>Parse deploy result <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">sf project deploy report --job-id &lt;id&gt; (on failure)</li>
+                </ul>
+                <p class="note">
+                    Common gotchas: referenced field/object not yet deployed (sequence the metadata worker first);
+                    <code>storeOutputAutomatically</code> with missing field definitions on the variable; required input
+                    variable missing on a subflow call; inactive referenced object/RecordType.
+                </p>
+            </div>
+
+            <div class="step" data-n="10">
+                <h3>Run the flow anti-pattern checklist <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li>no looping over <code>$Record</code></li>
+                    <li>no DML / Get Records in loops</li>
+                    <li>no hardcoded IDs</li>
+                    <li>every DML has a fault path</li>
+                    <li>transaction boundaries on screen flows</li>
+                    <li>
+                        variable prefixes used: <code>var_</code> / <code>col_</code> / <code>rec_</code> /
+                        <code>inp_</code> / <code>out_</code>
+                    </li>
+                    <li>Collection Filter preferred over Loop+Decision</li>
+                    <li>Transform over Loop where applicable</li>
+                </ul>
+                <p class="note">From <a href="../playbook.html#flow-anti-pattern-checklist-run-before-done"><code>docs/sfdc-playbook.md#flow-anti-pattern-checklist-run-before-done</code></a>.</p>
+            </div>
+
+            <div class="step" data-n="11">
+                <h3>Commit per-task <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git add force-app/main/default/flows/&lt;FlowName&gt;.flow-meta.xml</li>
+                    <li class="shell">git commit -m "[T-NNN] &lt;description&gt;"</li>
+                </ul>
+                <p class="note">Stage by explicit path. Never push.</p>
+            </div>
+
+            <div class="step" data-n="12">
+                <h3>Verify before claiming DONE <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>deploy <code>Status: Succeeded</code></li>
+                    <li>bulk-test result summary</li>
+                    <li>git log -1 for commit SHA</li>
+                    <li>anti-pattern checklist all ✓</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="13">
+                <h3>Return DONE / BLOCKER / FAILED <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li>
+                        DONE: task ID · flow name + status (Draft / Active) · files · deploy ID · bulk-test summary ·
+                        commit SHA · playbook anchors cited
+                    </li>
+                    <li>If activation is needed: <b>note "awaiting activation approval" — never auto-activate</b></li>
+                    <li>BLOCKER: <code>&lt;q&gt; | CONTEXT | NEED</code> · revert · no commit</li>
+                    <li>FAILED: <code>&lt;reason&gt;</code> · revert · no commit</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Receiving code review findings (CHANGES_REQUESTED)</h2>
+        <div class="flow">
+            <div class="step" data-n="A">
+                <h3>Read every finding before editing the flow <span class="tag read">read</span></h3>
+                <p class="note">
+                    Common findings on flows: missing fault paths, unfiltered Get Records, hardcoded IDs, default
+                    element names ("Decision_1"). Plan in one pass — Flow Builder edits are easier batched.
+                </p>
+            </div>
+            <div class="step" data-n="B">
+                <h3>Follow-up commit on top <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git commit -m "[T-NNN] review fixes &lt;round&gt;"</li>
+                </ul>
+                <p class="note">New flow version stays Draft.</p>
+            </div>
+            <div class="step" data-n="C">
+                <h3>Re-run bulk test + anti-pattern checklist <span class="tag shell">shell</span></h3>
+                <p class="note">Same evidence requirements as round 1.</p>
+            </div>
+            <div class="step" data-n="D">
+                <h3>Report DONE with finding-by-finding response <span class="tag gate">gate</span></h3>
+            </div>
+        </div>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never deploy to non-<code>spencerdev</code> orgs</td>
+                <td>Prod is read-only.</td>
+            </tr>
+            <tr>
+                <td>Never auto-activate a flow</td>
+                <td>Deploy as Draft; activation requires explicit user approval.</td>
+            </tr>
+            <tr>
+                <td>Never push or merge</td>
+                <td>Feature branch only.</td>
+            </tr>
+            <tr>
+                <td>Never <code>git add -A</code> / <code>git add .</code></td>
+                <td>Stage only the specific flow file(s) you touched.</td>
+            </tr>
+            <tr>
+                <td>Never modify <code>.pm/</code>, Apex, LWC, or object/permission metadata</td>
+                <td>Wrong-lane → BLOCKER.</td>
+            </tr>
+            <tr>
+                <td>Never hand-edit complex XML structural changes</td>
+                <td>Use Flow Builder for structure. Textual-only edits (description, label) are fine.</td>
+            </tr>
+            <tr>
+                <td>Never stall waiting for input</td>
+                <td>Ambiguity → BLOCKER → return.</td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>Author record-triggered, screen, autolaunched, scheduled, platform-event flows</li>
+                    <li>Edit existing flow descriptions, labels, version notes by hand</li>
+                    <li>Deploy as Draft to <code>spencerdev</code></li>
+                    <li>Run bulk-tests via anonymous Apex against 251+ records</li>
+                    <li>Apply <code>TriggerSettings__c</code> bypass discipline and three-tier error handling</li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Auto-activate flows — Draft only</li>
+                    <li>Hand-author structural XML changes (Builder only)</li>
+                    <li>Edit Apex / LWC / objects / fields / permission sets</li>
+                    <li>Reference fields that aren't yet deployed</li>
+                    <li>Skip the bulk-test / anti-pattern checklist</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers</h2>
+            <div class="related-grid">
+                <a class="related-card review" href="review.html">
+                    <div class="name">Review worker →</div>
+                    <div class="why">
+                        Runs after every flow DONE — spec then quality. Quality mode checks fault paths + anti-pattern
+                        checklist.
+                    </div>
+                </a>
+                <a class="related-card metadata" href="metadata.html">
+                    <div class="name">Metadata worker →</div>
+                    <div class="why">
+                        Must land referenced fields/objects before flow worker can author against them.
+                    </div>
+                </a>
+                <a class="related-card apex" href="apex.html">
+                    <div class="name">Apex worker →</div>
+                    <div class="why">
+                        Often pairs when a flow calls an invocable Apex action, or an Apex trigger invokes a subflow.
+                    </div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

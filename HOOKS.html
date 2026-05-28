@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hooks Setup — Claude Code</title>
+<link rel="stylesheet" href="dark-theme.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Hooks setup</h1>
+  <div class="subtitle">All 15 hooks across 5 events · last updated 2026-05-22 · source: <code>~/.claude/settings.json</code></div>
+</header>
+
+<div class="toc">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#sessionstart">SessionStart (3)</a></li>
+    <li><a href="#stop">Stop (2)</a></li>
+    <li><a href="#posttooluse">PostToolUse (1)</a></li>
+    <li><a href="#pretooluse">PreToolUse (7)</a></li>
+    <li><a href="#permissionrequest">PermissionRequest (2)</a></li>
+    <li><a href="#scripts">Hook scripts</a></li>
+    <li><a href="#recent">Recent decisions</a></li>
+    <li><a href="#gotchas">Windows gotchas</a></li>
+  </ul>
+</div>
+
+<div class="callout info">
+<strong>Two architectural rules drive everything:</strong>
+<ol style="margin: 8px 0 0; padding-left: 20px;">
+  <li><strong>Permission-decision hooks must invoke a <code>.ps1</code> file via <code>powershell -NoProfile -File</code>.</strong> Inline PowerShell commands that emit <code>permissionDecision</code> JSON are silently ignored on Windows. Side-effect-only hooks (Slack pings, log writes) can stay inline.</li>
+  <li><strong>Hook payloads carry no skill context.</strong> Hooks key off file paths, command patterns, and <code>.pm/&lt;slug&gt;/</code> state — never on "which skill is running." This is why quick-build inherits all of drive-build's hook coverage automatically: same file paths, same state shape.</li>
+</ol>
+</div>
+
+<h2 id="sessionstart">SessionStart hooks <span class="pill conv">fires once at boot</span></h2>
+
+<div class="card">
+  <h3>S1 · Worktree sweep</h3>
+  <div class="meta">script · <code>~/.claude/scripts/worktree-sweep.ps1</code></div>
+  <p><strong>What it does:</strong> Scans <code>.claude/worktrees/</code> for "claude agent (pid N)" locks where PID N is dead. If the worktree is clean AND the branch is merged to master, removes the lock + worktree + branch via safe <code>git branch -d</code>. Prints breadcrumbs (parent chat UUID + agent description) so you can resume context if needed.</p>
+  <p><strong>Cost / risk:</strong> ~1–2s at boot · Low risk. Never <code>-D</code> force-delete; never touches paths outside <code>.claude/worktrees/</code>.</p>
+</div>
+
+<div class="card">
+  <h3>S2 · <code>.pm/&lt;slug&gt;/</code> + spec resume scanner</h3>
+  <div class="meta">inline PowerShell · prints "where was I" context block</div>
+  <p><strong>What it does:</strong> Walks <code>.pm/*/</code> dirs that contain a <code>TODO.md</code>. For each one, prints spec frontmatter (first 15 lines), <code>TODO.md</code> (first 40 lines), <code>LOG.md</code> (last 15 lines), and the count of "awaiting" strings in <code>QUESTIONS.md</code>. Also lists orphan in-progress specs that have no <code>.pm/&lt;slug&gt;/</code> dir.</p>
+  <p><strong>Cost / risk:</strong> ~0.5s. Output is the resume context you see on every session boot. Read-only.</p>
+  <p><strong>Heading text:</strong> renamed from <code>## Active drive-build:</code> → <code>## Active build:</code> on 2026-05-22 to be accurate for both quick-build and drive-build slugs.</p>
+</div>
+
+<div class="card">
+  <h3>S3 · Weekly doc-writer queue check</h3>
+  <div class="meta">script · <code>~/.claude/scripts/weekly-doc-check.ps1</code></div>
+  <p><strong>What it does:</strong> Once per ISO week (state file at <code>~/.claude/state/last-doc-check.txt</code>), prompts review of the doc-writer queue for <code>$AMP_JIRA_PROJECT</code> (default <code>GTMSYS</code>).</p>
+  <p><strong>Cost / risk:</strong> ~0.5s, fires once per week. Low risk · state-throttled.</p>
+</div>
+
+<h2 id="stop">Stop hooks <span class="pill conv">fires when Claude turn ends</span></h2>
+
+<div class="card">
+  <h3>T1 · "Claude stopped" Slack notify</h3>
+  <div class="meta">script · <code>~/.claude/scripts/notify-stop.ps1</code> · async</div>
+  <p><strong>Silence rules (in order):</strong></p>
+  <ol>
+    <li>Any <code>.pm/*/QUESTIONS.md</code> contains an "awaiting" string → silence (T2 will handle the ping).</li>
+    <li>Any file under <code>.pm/*/</code> was modified in the last 5 min → silence (active loop iteration).</li>
+    <li>Otherwise → Slack-ping <code>$AMP_SLACK_WEBHOOK</code> with a random "bro" nickname.</li>
+  </ol>
+  <p><strong>What this catches:</strong> Drive-build dying silently with no Q written (no recent activity → ping). Stale <code>in-progress</code> specs (no Q, no recent activity → ping you to clean it up). Normal conversational stop with no active builds → ping.</p>
+  <p><strong>What this silences:</strong> Active loop iterations between waves (recent <code>.pm/</code> activity). Builds with an awaiting Q (T2 already pinged).</p>
+  <p><strong>Replaced:</strong> Old "if any spec status is in_progress → silence" logic which had a blind spot for silently-dead builds.</p>
+</div>
+
+<div class="card">
+  <h3>T2 · QUESTIONS.md awaiting-count Slack notify</h3>
+  <div class="meta">inline PowerShell · async</div>
+  <p><strong>What it does:</strong> Scans <code>.pm/*/QUESTIONS.md</code> for "awaiting" string counts. Compares to last-pinged count file at <code>.pm/&lt;slug&gt;/.last_pinged_count</code>. If current count &gt; last, Slack-pings: <code>Hey &lt;bro&gt; (&lt;branch&gt;), N new Q(s) on builds: &lt;slug-list&gt;</code>. Updates the count file.</p>
+  <p><strong>Cost / risk:</strong> ~50ms async. Per-build count file prevents repeat-pings on the same questions.</p>
+</div>
+
+<h2 id="posttooluse">PostToolUse hooks</h2>
+
+<div class="card">
+  <h3>P1 · Deploy ID logger</h3>
+  <div class="meta">inline PowerShell · matcher <code>Bash</code></div>
+  <p><strong>What it does:</strong> After every <code>sf project deploy start</code>, parses output for Deploy ID + Status + target org. Appends <code>&lt;ts&gt; | &lt;status&gt; | &lt;org&gt; | &lt;deployId&gt;</code> to <code>.pm/DEPLOYS.md</code> at repo root (creates <code>.pm/</code> if needed).</p>
+  <p><strong>Cost / risk:</strong> ~10ms · Pure append, low risk. Skill-agnostic — fires regardless of which build path triggered the deploy.</p>
+</div>
+
+<h2 id="pretooluse">PreToolUse hooks</h2>
+
+<table>
+  <thead><tr><th style="width:8%;">#</th><th style="width:22%;">Hook</th><th style="width:14%;">Matcher</th><th style="width:14%;">Decision</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>R1</strong></td>
+      <td>Auto-allow-edit<br><span style="color: var(--text-3); font-size: 11px;"><code>auto-allow-edit.ps1</code></span></td>
+      <td><code>Edit | Write</code></td>
+      <td><span class="pill active">allow</span></td>
+      <td>Checks <code>file_path</code> against an allowlist of substring patterns (<code>.pm</code>, <code>.claude</code>, <code>.md</code>, <code>.py</code>, <code>.css</code>, <code>.html</code>, etc.). Matches → <code>permissionDecision: allow</code>. Hard-skips <code>force-app/</code> (goes through R5). Logs every invocation + outcome to <code>~/.claude/perm-hook.log</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>R2</strong></td>
+      <td>Prod write blocker<br><span style="color: var(--text-3); font-size: 11px;">inline</span></td>
+      <td><code>Bash</code></td>
+      <td><span class="pill terminal">deny</span></td>
+      <td>Hard-denies <code>sf project deploy (start|validate)</code>, <code>sf data (create|update|upsert|delete)</code>, <code>sf apex run</code> when targeting <code>Production|prod</code>. Per CLAUDE.md hard rule.</td>
+    </tr>
+    <tr>
+      <td><strong>R3</strong></td>
+      <td>Non-default-org gate<br><span style="color: var(--text-3); font-size: 11px;">inline</span></td>
+      <td><code>Bash</code></td>
+      <td><span class="pill gate">ask</span></td>
+      <td>If any <code>sf</code> command targets an org other than <code>$AMP_DEFAULT_ORG</code> (default <code>spencerdev</code>), prompts for confirmation.</td>
+    </tr>
+    <tr>
+      <td><strong>R4</strong></td>
+      <td>Worktree remove guard<br><span style="color: var(--text-3); font-size: 11px;"><code>worktree-remove-guard.ps1</code></span></td>
+      <td><code>Bash</code></td>
+      <td><span class="pill active">allow</span> if clean<br><span class="pill gate">ask</span> if dirty</td>
+      <td>Covers both <code>git worktree remove &lt;path&gt;</code> AND <code>rm -rf .claude/worktrees/&lt;name&gt;</code>. Parses the path, runs <code>git -C &lt;path&gt; status --short</code>. Empty output → allow. Non-empty → ask. <code>--force</code> always asks.</td>
+    </tr>
+    <tr>
+      <td><strong>R5</strong></td>
+      <td>Main-checkout worktree rule<br><span style="color: var(--text-3); font-size: 11px;">inline</span></td>
+      <td><code>Edit | Write</code></td>
+      <td><span class="pill gate">ask</span></td>
+      <td>If <code>$AMP_PROJECT_REPO_ROOT</code> set AND file is under <code>force-app/</code> AND NOT inside <code>.claude/worktrees/</code> → ask. Enforces CLAUDE.md "all force-app/ edits in worktrees" rule.</td>
+    </tr>
+    <tr>
+      <td><strong>R6</strong></td>
+      <td>LWC design-doc nudge<br><span style="color: var(--text-3); font-size: 11px;">inline</span></td>
+      <td><code>Edit | Write</code></td>
+      <td><span class="pill active">allow</span> (informational)</td>
+      <td>For edits under <code>force-app/main/default/lwc/&lt;componentName&gt;/</code>, checks <code>.claude/lwc_design/&lt;componentName&gt;.md</code> for <code>status: approved</code>. If missing → emits <code>allow</code> with a nudge to run <code>/lwc-design</code>. Never blocks.</td>
+    </tr>
+    <tr>
+      <td><strong>R7</strong></td>
+      <td>Anon-Apex DML guard<br><span style="color: var(--text-3); font-size: 11px;"><code>anon-apex-dml-guard.ps1</code></span></td>
+      <td><code>Bash</code></td>
+      <td><span class="pill gate">ask</span> if DML</td>
+      <td>When <code>sf apex run --file &lt;path&gt;</code> is invoked, reads the file and grep-matches DML keywords (<code>insert</code>, <code>update</code>, <code>upsert</code>, <code>delete</code>, <code>Database.*</code>). Read-only queries pass silently. R2 already blocks prod targeting; this catches accidental mass-DML against sandbox.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="permissionrequest">PermissionRequest hooks</h2>
+
+<div class="card">
+  <h3>Q1 · Auto-approve own DM</h3>
+  <div class="meta">plugin script · matcher <code>mcp__claude_ai_Slack__slack_send_message</code></div>
+  <p><strong>What it does:</strong> Auto-approves Slack DMs to your own user ID. Other recipients require explicit confirmation.</p>
+  <p><strong>Source:</strong> <code>~/Documents/claude-plugins/plugins/amp-sfdc-slack-notifs/hooks/auto-approve-own-dm.ps1</code></p>
+</div>
+
+<div class="card">
+  <h3>Q2 · Notify on permission request</h3>
+  <div class="meta">plugin script · async · no matcher (fires on any permission prompt)</div>
+  <p><strong>What it does:</strong> Slack-pings you when Claude is waiting on a permission prompt. Lets you know to come back to the terminal.</p>
+  <p><strong>Source:</strong> <code>~/Documents/claude-plugins/plugins/amp-sfdc-slack-notifs/hooks/notify-permission-request.ps1</code></p>
+</div>
+
+<h2 id="scripts">Hook scripts</h2>
+
+<p>Externalized PowerShell scripts that hooks invoke. All emit <code>{ hookSpecificOutput: { permissionDecision, permissionDecisionReason } }</code> JSON for permission decisions, or run side effects (Slack pings, log writes) for fire-and-forget hooks.</p>
+
+<table>
+  <thead><tr><th>Script</th><th>Owner hook</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>auto-allow-edit.ps1</code></td><td>R1</td><td>Allowlist-based Edit/Write auto-approval. Logs outcomes to <code>~/.claude/perm-hook.log</code>.</td></tr>
+    <tr><td><code>worktree-remove-guard.ps1</code></td><td>R4</td><td>Smart guard on <code>git worktree remove</code> + <code>rm -rf .claude/worktrees/</code>. Allows clean removes, asks on dirty.</td></tr>
+    <tr><td><code>anon-apex-dml-guard.ps1</code></td><td>R7</td><td>Grep anon-Apex file for DML keywords. Asks on hit.</td></tr>
+    <tr><td><code>notify-stop.ps1</code></td><td>T1</td><td>"Claude stopped" Slack notify with awaiting + recent-activity silencing.</td></tr>
+    <tr><td><code>worktree-sweep.ps1</code></td><td>S1</td><td>Clean up dead-PID worktree locks at session boot.</td></tr>
+    <tr><td><code>weekly-doc-check.ps1</code></td><td>S3</td><td>Weekly doc-writer queue prompt.</td></tr>
+    <tr><td><code>worktree-status.ps1</code></td><td>(manual)</td><td>Status snapshot of all worktrees, invoked via <code>/worktrees</code> skill.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="recent">Recent decisions</h2>
+
+<table>
+  <thead><tr><th>Date</th><th>Change</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>2026-05-22</td><td>S2 heading text: <code>Active drive-build:</code> → <code>Active build:</code></td><td>Quick-build slugs now appear under that heading — needed to be accurate</td></tr>
+    <tr><td>2026-05-22</td><td>T1 logic rewrite: spec-status gate → awaiting + recent-activity gates. Externalized to <code>notify-stop.ps1</code>.</td><td>Old gate had a blind spot for silently-dead builds. New gate catches those while still silencing healthy loop iterations.</td></tr>
+    <tr><td>2026-05-22</td><td>R4 logic rewrite: "always ask" → "clean = allow, dirty = ask". Externalized to <code>worktree-remove-guard.ps1</code>. Extended to cover <code>rm -rf</code> fallback.</td><td>Merge flow ends with worktree remove on a known-clean worktree; prompting every time was friction. Also closed a gap where <code>rm -rf</code> fallback escaped the guard entirely.</td></tr>
+    <tr><td>2026-05-22</td><td>R7 added: anon-Apex DML guard</td><td>R2 covers prod; <code>sf apex run</code> against sandbox was unguarded. Catches accidental mass-DML.</td></tr>
+    <tr><td>2026-05-22</td><td>R1 (<code>auto-allow-edit.ps1</code>): outcome logging + dropped legacy <code>{decision, reason}</code> JSON shape</td><td>Diagnostic: log now records <code>ALLOWED</code> / <code>PASSTHROUGH-force-app</code> / <code>PASSTHROUGH-no-match</code> per call. JSON shape conflict was suspected cause of intermittent prompts.</td></tr>
+    <tr><td>2026-05-22</td><td>Permission allowlist: <code>Skill(sfdc-implement-ticket)</code> → <code>Skill(sfdc-quick-build)</code></td><td>Skill was renamed; allowlist needed to follow</td></tr>
+  </tbody>
+</table>
+
+<h2 id="gotchas">Windows gotchas</h2>
+
+<div class="callout warn">
+<strong>Inline PowerShell silently fails for permission decisions.</strong> If you write a PreToolUse hook that emits <code>{ hookSpecificOutput: { permissionDecision: ... } }</code> JSON inline, Claude Code on Windows ignores the output. You MUST invoke a <code>.ps1</code> file via <code>powershell -NoProfile -File &lt;path&gt;</code>. Side-effect hooks (Slack pings, append-to-log) work inline fine.
+</div>
+
+<div class="callout warn">
+<strong>The <code>#</code> character in inline PowerShell hook strings consumes everything after it.</strong> In a single-line command string inside <code>settings.json</code>, <code>#</code> starts a comment and silently no-ops the rest of the script. Never include <code>#</code> in inline hook bodies; use externalized <code>.ps1</code> files for any script that needs comments.
+</div>
+
+<div class="callout info">
+<strong>Plan mode bypasses all PreToolUse permission hooks.</strong> If you're in plan mode and get prompted on every edit despite R1's allowlist, check plan mode first — it has a Yes/No-only prompt (no "Always allow") that's separate from the standard permission dialog.
+</div>
+
+<hr>
+<p style="color: var(--text-3); font-size: 12px; text-align: center;">
+  Source: <code>~/.claude/settings.json</code> · script dir: <code>~/.claude/scripts/</code> · plugin hooks: <code>~/Documents/claude-plugins/plugins/amp-sfdc-slack-notifs/hooks/</code>
+</p>
+
+</div>
+</body>
+</html>

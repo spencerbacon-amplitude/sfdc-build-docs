@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-lwc-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar lwc">
+            <h1>
+                🟪 sfdc-lwc-worker
+                <span class="sub">LWC / Aura implementation worker — components, Jest tests, meta XML</span>
+            </h1>
+            <div class="lane">
+                lane: <code>force-app/main/default/lwc/</code>, <code>force-app/main/default/aura/</code>
+            </div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-lwc-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Write · Edit · Glob · Grep · Bash</code>.
+        </div>
+
+        <p>
+            Receives one task from <code>/sfdc-drive-build</code> and executes end-to-end: read PICKLES design doc if it
+            exists → implement → lint + prettier → jest → targeted deploy of the whole component dir → per-task commit →
+            DONE / BLOCKER / FAILED. Never touches Apex / flows / object metadata / permission sets.
+        </p>
+
+        <div class="shared">
+            <h2>0 · Always-on inputs (every task)</h2>
+            <div class="shared-grid">
+                <div class="shared-card">
+                    <div class="file">Task brief from /sfdc-drive-build</div>
+                    <div class="desc">
+                        Task ID, description, ACs, success criterion, pre-fetched files. May include a
+                        <code>## Playbook excerpts</code> section — read those, don't re-open the playbook.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">CLAUDE.md → Always-on workflow rules</div>
+                    <div class="desc">Goal-driven execution · fresh evidence · two-stage review.</div>
+                </div>
+                <div class="shared-card">
+                    <div class="file"><a href="../playbook.html">docs/sfdc-playbook.md</a> (fallback only)</div>
+                    <div class="desc">
+                        LWC hard-stops · modern patterns (API 66.0) · project specifics · wire / events / Flow / Jest /
+                        SLDS 2. Only re-read if excerpts aren't in the brief.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow">
+            <div class="step" data-n="1">
+                <h3>Receive task <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>orchestrator-supplied: task ID, ACs, success criterion, pre-fetched files</li>
+                </ul>
+                <p class="note">Ambiguous (UX behavior, target audience, page placement, FLS) → BLOCKER.</p>
+            </div>
+
+            <div class="step" data-n="2">
+                <h3>Read authoritative rules <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>brief's <code>## Playbook excerpts</code> section (preferred)</li>
+                    <li>fallback: <a href="../playbook.html#lwc-hard-stops">docs/sfdc-playbook.md#lwc-hard-stops</a></li>
+                    <li>fallback: <a href="../playbook.html#lwc-modern-patterns-api-660">docs/sfdc-playbook.md#lwc-modern-patterns-api-660</a></li>
+                    <li>fallback: <a href="../playbook.html#lwc-project-specifics">docs/sfdc-playbook.md#lwc-project-specifics</a></li>
+                    <li>fallback: <a href="../playbook.html#lwc-wire-events-flow-jest-slds-2">docs/sfdc-playbook.md#lwc-wire-events-flow-jest-slds-2</a></li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="3">
+                <h3>
+                    Read PICKLES design doc <span class="tag read">read</span>
+                    <span class="aside">(if one exists)</span>
+                </h3>
+                <ul class="files">
+                    <li>.claude/lwc_design/&lt;componentName&gt;.md</li>
+                </ul>
+                <p class="note">
+                    Names the chosen starter bundle (frontmatter <code>starter_bundle:</code>) and walks the PICKLES
+                    decisions (Prototype / Integrate / Composition / Kinetics / Libraries / Execution / Security) to
+                    implement. Read this FIRST before opening the starter bundle.
+                </p>
+            </div>
+
+            <div class="step" data-n="4">
+                <h3>
+                    Read starter bundle <span class="tag read">read</span>
+                    <span class="aside">(new components only — not for edits)</span>
+                </h3>
+                <ul class="files">
+                    <li>docs/lwc-templates/README.md — project deltas</li>
+                    <li>docs/lwc-templates/assets/&lt;bundle&gt;/ — one of 13 bundles</li>
+                </ul>
+                <p class="note">
+                    Bundles: <code>basic-component</code>, <code>datatable-component</code>,
+                    <code>modal-component</code>, <code>form-component</code>, <code>flow-screen-component</code>,
+                    <code>graphql-component</code>, <code>record-picker</code>, <code>workspace-api</code>,
+                    <code>state-store</code>, <code>message-channel</code> (LMS), <code>typescript-component</code>,
+                    <code>jest-test</code>, <code>apex-controller</code>.
+                </p>
+            </div>
+
+            <div class="step" data-n="5">
+                <h3>
+                    Read references <span class="tag read">read</span>
+                    <span class="aside">(as applicable to the task)</span>
+                </h3>
+                <ul class="files">
+                    <li>
+                        docs/lwc-templates/references/component-patterns.md — PICKLES details + wire/GraphQL/modal
+                        patterns
+                    </li>
+                    <li>docs/lwc-templates/references/accessibility-guide.md</li>
+                    <li>docs/lwc-templates/references/performance-guide.md</li>
+                    <li>docs/lwc-templates/references/jest-testing.md</li>
+                    <li>docs/lwc-templates/references/triangle-pattern.md — parent-child-sibling event flow</li>
+                    <li>docs/lwc-templates/references/template-anti-patterns.md</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="6">
+                <h3>
+                    External SLDS refs <span class="tag read">read</span>
+                    <span class="aside">(fetch on demand)</span>
+                </h3>
+                <ul class="files">
+                    <li class="shell">
+                        gh api repos/salesforce-ux/design-system/contents/ui/components/&lt;name&gt;/docs.mdx — SLDS 1
+                        blueprint
+                    </li>
+                    <li>
+                        Figma MCP <code>get_design_context</code> against fileKey <code>dqjCDLlPNyLO8SEi9wNDkK</code> —
+                        SLDS 2 (when migrating)
+                    </li>
+                    <li>docs/lwc-templates/slds2-uplift/ — migration patterns SLDS 1 → 2</li>
+                </ul>
+                <p class="note">Added in commit 5c16b38d (2026-05-22). Bookmark-only — no mining.</p>
+            </div>
+
+            <div class="step" data-n="7">
+                <h3>Verify org target <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">sf config get target-org</li>
+                    <li class="gate">must be <code>spencerdev</code> — else BLOCKER</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="8">
+                <h3>Implement <span class="tag write">write</span></h3>
+                <ul class="files">
+                    <li class="write">force-app/main/default/lwc/&lt;name&gt;/&lt;name&gt;.html</li>
+                    <li class="write">force-app/main/default/lwc/&lt;name&gt;/&lt;name&gt;.js</li>
+                    <li class="write">force-app/main/default/lwc/&lt;name&gt;/&lt;name&gt;.css</li>
+                    <li class="write">force-app/main/default/lwc/&lt;name&gt;/&lt;name&gt;.js-meta.xml</li>
+                    <li class="write">force-app/main/default/lwc/&lt;name&gt;/__tests__/&lt;name&gt;.test.js</li>
+                </ul>
+                <p class="note">Use Edit on existing files — never rewrite a whole file unless brand new.</p>
+            </div>
+
+            <div class="step" data-n="9">
+                <h3>Lint + format gate <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">npm run lint</li>
+                    <li class="shell">npm run prettier</li>
+                    <li class="gate">zero errors before continuing</li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="10">
+                <h3>Jest gate <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">npm run test:unit -- &lt;componentName&gt;</li>
+                    <li class="gate">all tests pass</li>
+                    <li class="gate">
+                        Jest hardening rules applied: DOM cleanup, flushPromises, mocked Apex, unboxed proxies
+                    </li>
+                </ul>
+            </div>
+
+            <div class="step" data-n="11">
+                <h3>Deploy targeted <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">sf project deploy start --source-dir force-app/main/default/lwc/&lt;name&gt;</li>
+                    <li class="shell">sf project deploy report --job-id &lt;id&gt; (on failure)</li>
+                </ul>
+                <p class="note">
+                    Deploy the whole component directory, not individual files. The
+                    <code>lightningCommunity__Page</code> trap is the #1 cause of cryptic XML errors — check the
+                    <code>.js-meta.xml</code> targets first when a deploy fails on a community component.
+                </p>
+            </div>
+
+            <div class="step" data-n="12">
+                <h3>Commit per-task <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git add &lt;explicit paths only&gt;</li>
+                    <li class="shell">git commit -m "[T-NNN] &lt;TODO.md description&gt;"</li>
+                </ul>
+                <p class="note">
+                    Pre-commit hooks (Husky + lint-staged) run on staged files. Never <code>--no-verify</code>. Never
+                    <code>git add -A</code>.
+                </p>
+            </div>
+
+            <div class="step" data-n="13">
+                <h3>Verify before claiming DONE <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>lint exit code</li>
+                    <li>jest "Tests: X passed" line</li>
+                    <li>deploy report <code>Status: Succeeded</code></li>
+                    <li>git log -1 for commit SHA</li>
+                </ul>
+                <p class="note">Quote verbatim — no hedging.</p>
+            </div>
+
+            <div class="step" data-n="14">
+                <h3>Return DONE / BLOCKER / FAILED <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li>
+                        DONE: task ID · files · deploy ID + status · jest pass count · commit SHA · playbook anchors
+                        cited
+                    </li>
+                    <li>BLOCKER: <code>&lt;q&gt; | CONTEXT | NEED</code> · revert partial edits · no commit</li>
+                    <li>FAILED: <code>&lt;reason&gt;</code> · revert · no commit</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Receiving code review findings (CHANGES_REQUESTED)</h2>
+        <div class="flow">
+            <div class="step" data-n="A">
+                <h3>Read every finding before changing code <span class="tag read">read</span></h3>
+                <p class="note">BLOCKER + MAJOR must be addressed or justified. MINOR fix if cheap.</p>
+            </div>
+            <div class="step" data-n="B">
+                <h3>Follow-up commit on top <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git commit -m "[T-NNN] review fixes &lt;round&gt;"</li>
+                </ul>
+                <p class="note">Don't amend. Don't squash.</p>
+            </div>
+            <div class="step" data-n="C">
+                <h3>Re-run the verification gate <span class="tag shell">shell</span></h3>
+                <p class="note">Lint, jest, deploy — same evidence as round 1.</p>
+            </div>
+            <div class="step" data-n="D">
+                <h3>Report DONE with finding-by-finding response <span class="tag gate">gate</span></h3>
+                <p class="note">
+                    Format: <code>[BLOCKER] dashboard.js:42 — Fixed: removed @track from primitive</code> etc., then
+                    standard DONE evidence.
+                </p>
+            </div>
+        </div>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never deploy to non-<code>spencerdev</code> orgs</td>
+                <td>Prod is read-only.</td>
+            </tr>
+            <tr>
+                <td>Never push or merge</td>
+                <td>Feature branch only. User reviews diff.</td>
+            </tr>
+            <tr>
+                <td>Never <code>git add -A</code> / <code>git add .</code></td>
+                <td>Stage by explicit path.</td>
+            </tr>
+            <tr>
+                <td>Never modify <code>.pm/</code>, Apex, flows, or object metadata</td>
+                <td>Wrong-lane work → BLOCKER → orchestrator re-routes.</td>
+            </tr>
+            <tr>
+                <td>Never skip pre-commit hooks</td>
+                <td>Husky + lint-staged catch real issues.</td>
+            </tr>
+            <tr>
+                <td>Never override <code>.slds-*</code> classes</td>
+                <td>Playbook LWC hard-stop — use the component's own scoped classes.</td>
+            </tr>
+            <tr>
+                <td>Never use <code>lightning-button</code> for Cancel / Confirm / Save / Approve</td>
+                <td>Project rule — use native buttons with grey-hover / green-positive pattern.</td>
+            </tr>
+            <tr>
+                <td>Never stall waiting for input</td>
+                <td>Ambiguity → BLOCKER → return.</td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>Create new LWC / Aura bundles from the 13 starter templates</li>
+                    <li>Edit existing components, add Jest tests, run lint + prettier + jest locally</li>
+                    <li>Fetch SLDS 1 docs via <code>gh api</code> and SLDS 2 design context via Figma MCP</li>
+                    <li>Deploy the whole component directory targeted to <code>spencerdev</code></li>
+                    <li>
+                        Apply project deltas: color tokens, native-button pattern, <code>WorkatoService</code> outbound,
+                        cacheable discipline
+                    </li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Edit Apex / flows / object metadata / permission sets</li>
+                    <li>Deploy single files — always the whole component dir</li>
+                    <li>Override <code>.slds-*</code> globally — playbook hard-stop</li>
+                    <li>Use <code>lightning-button</code> for Cancel / Confirm / Save / Approve</li>
+                    <li>Skip pre-commit hooks</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers</h2>
+            <div class="related-grid">
+                <a class="related-card review" href="review.html">
+                    <div class="name">Review worker →</div>
+                    <div class="why">
+                        Runs after every LWC DONE — spec mode then quality mode. PICKLES coverage checked in quality.
+                    </div>
+                </a>
+                <a class="related-card metadata" href="metadata.html">
+                    <div class="name">Metadata worker →</div>
+                    <div class="why">Pairs when an LWC needs FlexiPage placement, custom field, or perm-set entry.</div>
+                </a>
+                <a class="related-card research" href="research.html">
+                    <div class="name">Research worker →</div>
+                    <div class="why">
+                        Hands LWC worker the surrounding bundle contents + Aura ancestry without re-reading.
+                    </div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

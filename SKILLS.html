@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skills Inventory — Claude Code</title>
+<link rel="stylesheet" href="dark-theme.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Skills inventory</h1>
+  <div class="subtitle">All <code>/</code>-invocable skills + slash commands · last updated 2026-05-22 · sources: <code>~/.claude/skills/</code>, <code>~/.claude/commands/</code></div>
+</header>
+
+<div class="toc">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#build">Build orchestration (4)</a></li>
+    <li><a href="#design">Design (1)</a></li>
+    <li><a href="#docs">Documentation (3)</a></li>
+    <li><a href="#debug">Debugging / investigation (3)</a></li>
+    <li><a href="#worktree">Worktree / repo (2)</a></li>
+    <li><a href="#admin">Plugin / config admin (2)</a></li>
+    <li><a href="#jira">Jira workflow (2)</a></li>
+    <li><a href="#misc">Misc (1)</a></li>
+    <li><a href="#picker">Decision picker (what should I use?)</a></li>
+  </ul>
+</div>
+
+<div class="callout info">
+<strong>Skill vs command vs script.</strong> "Skills" live in <code>~/.claude/skills/&lt;name&gt;/SKILL.md</code> and have rich frontmatter describing when to fire. "Commands" live in <code>~/.claude/commands/&lt;name&gt;.md</code> and are simpler slash-invocations. Both are surfaced as <code>/&lt;name&gt;</code>. The dashboard treats them identically — pick the right one based on your task, not on where it lives.
+</div>
+
+<h2 id="build">Build orchestration <span class="pill skill-build">build</span></h2>
+
+<p>Four entry paths for code changes. Pick by size + ceremony needs.</p>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/sfdc-quick-build</code></td>
+      <td>Jira URL/key alongside "implement this", "build this", "small change", "quick build", "let's just add". Jira is OPTIONAL — conversational asks also fire.</td>
+      <td>1–8 tasks, all mechanical/standard tier. Want it kicked off + run mostly hands-off.</td>
+      <td>Spec at <code>.claude/specs/&lt;slug&gt;.md</code> + lighter <code>.pm/&lt;slug&gt;/{TODO,QUESTIONS,LOG}.md</code>. Single inline review at end. Q-FINAL gate before merge.</td>
+    </tr>
+    <tr>
+      <td><code>/sfdc-guided-build</code></td>
+      <td>"help me build", "I want to add", "let's implement", "can we create", "guided build". Conversational features without a Jira ticket.</td>
+      <td>Feature work where design isn't decided yet. LWC mockups, ambiguous scope.</td>
+      <td>Spec at <code>.claude/specs/&lt;slug&gt;.md</code> after conversational design phase. Build proceeds inline.</td>
+    </tr>
+    <tr>
+      <td><code>/sfdc-drive-build</code></td>
+      <td>Invoked explicitly: <code>/sfdc-drive-build &lt;slug&gt;</code> or <code>/loop /sfdc-drive-build &lt;slug&gt;</code> for unattended runs.</td>
+      <td>≥8 tasks OR any critical-tier task OR genuine parallel-wave wins. "Leave it running for an hour" style.</td>
+      <td>Spec + full <code>.pm/&lt;slug&gt;/</code> (adds PROJECT_PLAN, CONTEXT, FINDINGS/). Worker subagents dispatched in parallel waves. Two-stage review per task. Q-PLAN + Q-FINAL gates.</td>
+    </tr>
+    <tr>
+      <td><code>/grill</code></td>
+      <td>"grill me", "interrogate", "stress-test this plan", asks to be interviewed about an approach.</td>
+      <td>Before any build, when the plan needs sharper edges. Walks the decision tree branch-by-branch and writes the spec when done.</td>
+      <td>Spec at <code>.claude/specs/&lt;slug&gt;.md</code> with frontmatter resolved. Hands off to drive-build (or whichever path is right).</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="design">Design <span class="pill skill-design">design</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/lwc-design</code></td>
+      <td>"design the [X] component", "let's design an LWC", "draft a design for [component]", "I want to design [feature] before building".</td>
+      <td>Before writing code for any non-trivial LWC. Walks the <strong>PICKLES</strong> framework (Prototype, Integrate, Composition, Kinetics, Libraries, Execution, Security).</td>
+      <td>Durable design doc at <code>.claude/lwc_design/&lt;componentName&gt;.md</code>. Auto-discovered by quick-build / guided-build when they touch the matching LWC.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="docs">Documentation <span class="pill skill-doc">doc</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/design-doc-writer</code></td>
+      <td>"design doc", "technical design", "write a spec", "document this ticket", "document this change". Auto-fires from quick-build / guided-build / drive-build at completion when spec has <code>jira:</code>.</td>
+      <td>After implementation (or after plan approval). Creates Google Doc in <code>$AMP_DESIGN_DOCS_DRIVE_FOLDER_ID</code> folder.</td>
+      <td>Google Doc URL posted as a comment on the Jira ticket. Updates the existing doc if one is already linked.</td>
+    </tr>
+    <tr>
+      <td><code>/technical-doc-writer</code></td>
+      <td>"write docs to Confluence", "create a Confluence page", "document this class", "document this for the team".</td>
+      <td><strong>Manual only</strong> — promote tech docs to prod after sandbox UAT. Never auto-fires.</td>
+      <td>Confluence page in the configured space.</td>
+    </tr>
+    <tr>
+      <td><code>/sfdc-document-process</code></td>
+      <td>"document the [X] process", "document how [X] works", "write up how [X] flows through the system".</td>
+      <td>Reverse-engineering an existing process — walks the codebase + platform config and writes a holistic Confluence page about how it actually works today.</td>
+      <td>Confluence page describing the process as-implemented.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="debug">Debugging / investigation <span class="pill skill-util">util</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/sfdc-debug</code></td>
+      <td>"X is failing", "why isn't Y working", "debug this", "this is broken", "deploy errors", "test is red".</td>
+      <td>Something's broken and the cause isn't obvious from a single read. Walks deploy errors, test failures, LWC render issues, flow faults, orchestrator BLOCKER loops.</td>
+      <td>Diagnosis + concrete next step. Doesn't auto-fix — surfaces what to change.</td>
+    </tr>
+    <tr>
+      <td><code>/workato-sim</code></td>
+      <td><code>/workato-sim &lt;ClassName&gt;</code>, "size this queueable", "will this fit in heap", "what chunk size is safe for &lt;queueable&gt;".</td>
+      <td>Before deploying or expanding the chunk size of a Workato outbound queueable. Sizes payload against 6 MB Apex heap.</td>
+      <td>Measured heap projection at the configured chunk size. Dev-only (refuses sandbox/prod targets).</td>
+    </tr>
+    <tr>
+      <td><code>/spec-view</code></td>
+      <td>"/spec-view", "open the spec for X", "render the X spec", "show me the spec for X".</td>
+      <td>Read a spec visually instead of the raw markdown. Re-render after editing the <code>.md</code>.</td>
+      <td><code>.claude/specs/&lt;slug&gt;.html</code> rendered + opened in browser.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="worktree">Worktree / repo <span class="pill skill-util">util</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/worktree-cleanup</code></td>
+      <td>"clean up worktrees", "remove old worktrees", "are there any worktrees I can delete", "audit worktrees".</td>
+      <td>After many merges. Verifies each worktree is clean + merged into master, then removes the safe ones plus their merged branches. Also catches orphan empty dirs.</td>
+      <td>Cleaned worktree list + report of what was removed.</td>
+    </tr>
+    <tr>
+      <td><code>/worktrees</code></td>
+      <td>"/worktrees" (slash command).</td>
+      <td>Quick snapshot of all current worktrees — branch, dirty count, last commit subject. Read-only inventory.</td>
+      <td>One-screen worktree table.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="admin">Plugin / config admin <span class="pill skill-admin">admin</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/plugin-setup</code></td>
+      <td>"set up the plugins", "configure env vars", "what env vars do I need", "/plugin-setup".</td>
+      <td>First-time machine setup OR after installing a new plugin. Detects installed plugins and walks <code>setx</code> for each missing env var.</td>
+      <td>Configured env vars + summary of what's still missing.</td>
+    </tr>
+    <tr>
+      <td><code>/plugin-sync</code></td>
+      <td>"sync the plugin", "audit drift", "harmonize assets", "/plugin-sync".</td>
+      <td>After editing a mirrored asset locally and you need to push to the plugin. Or after adding a new skill/hook/command that should be team-published. Also audits <code>~/.claude/</code> ↔ <code>claude-plugins/</code> drift.</td>
+      <td>Diffs + applied changes. Maintains <code>.sh</code> ↔ <code>.ps1</code> parity in the plugin.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="jira">Jira workflow <span class="pill skill-doc">jira</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/jira-deploy-comment</code></td>
+      <td>"post deploy comment", "/jira-deploy-comment GTMSYS-XXXX". Auto-fires from drive-build at merge time.</td>
+      <td>After a successful deploy to spencerdev. Documents what shipped on the Jira ticket.</td>
+      <td>Comment on the Jira ticket with deploy ID, asset table, test results.</td>
+    </tr>
+    <tr>
+      <td><code>/jira-progress</code></td>
+      <td>"/jira-progress GTMSYS-XXXX", "post a progress update".</td>
+      <td>Mid-build status update to stakeholders. Useful when a build spans multiple sessions and you want to keep the ticket loud-and-clear.</td>
+      <td>Comment on the Jira ticket summarizing progress.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="misc">Misc <span class="pill skill-util">util</span></h2>
+
+<table>
+  <thead><tr><th style="width: 18%;">Skill</th><th style="width: 28%;">Triggers</th><th style="width: 22%;">When to use</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>/pm</code></td>
+      <td>"/pm", "show pm status", "where are we".</td>
+      <td>Cheat-sheet + status snapshot for active builds. Quick overview of <code>.pm/&lt;slug&gt;/</code> state without opening the dashboard.</td>
+      <td>Per-build summary + decision-tree reminder.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="picker">Decision picker — what should I use?</h2>
+
+<div class="callout info">
+<strong>Most common decisions:</strong>
+<ul style="margin: 8px 0 0; padding-left: 20px;">
+  <li><strong>I have a Jira ticket and want to ship it</strong> → <code>/sfdc-quick-build &lt;TICKET-KEY&gt;</code> (or paste the ticket URL; quick-build will fetch it). If the build has critical-tier tasks or &gt;8 tasks, quick-build will halt and route you to drive-build.</li>
+  <li><strong>I want to build something and the design isn't settled</strong> → <code>/sfdc-guided-build</code> (or <code>/grill</code> first if you want to be interrogated through the design decisions).</li>
+  <li><strong>I have a multi-task plan and want to step away</strong> → <code>/loop /sfdc-drive-build &lt;slug&gt;</code>.</li>
+  <li><strong>Something is broken</strong> → <code>/sfdc-debug</code>.</li>
+  <li><strong>About to build an LWC</strong> → <code>/lwc-design &lt;componentName&gt;</code> FIRST.</li>
+  <li><strong>About to deploy a Workato queueable</strong> → <code>/workato-sim &lt;ClassName&gt;</code> to validate heap.</li>
+  <li><strong>I edited a spec and want to read it visually</strong> → <code>/spec-view &lt;slug&gt;</code>.</li>
+  <li><strong>Trivial single-line change</strong> → just describe it conversationally. No skill needed.</li>
+</ul>
+</div>
+
+<div class="callout warn">
+<strong>Skill name landmines.</strong> <code>~/.claude/commands/sfdc-implement-ticket.md</code> still exists as a stale command alias from the 2026-05-22 rename. The skill itself has moved to <code>sfdc-quick-build</code>. The plugin repo at <code>~/Documents/claude-plugins/plugins/amp-sfdc-build/</code> still has 8 mirror references to the old name — pending <code>/plugin-sync</code>.
+</div>
+
+<hr>
+<p style="color: var(--text-3); font-size: 12px; text-align: center;">
+  Source: <code>~/.claude/skills/</code> · slash commands: <code>~/.claude/commands/</code> · plugin skills: <code>~/Documents/claude-plugins/plugins/amp-sfdc-*/</code>
+</p>
+
+</div>
+</body>
+</html>

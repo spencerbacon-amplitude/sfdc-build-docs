@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Salesforce Build System Docs</title>
+<link rel="stylesheet" href="dark-theme.css">
+<style>
+  .hero { margin: 0 0 48px; }
+  .hero p { color: var(--text-2); font-size: 16px; max-width: 760px; }
+  .section { margin: 40px 0; }
+  .section h2 { font-size: 18px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; border: none; padding: 0; margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { display: block; padding: 18px 20px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; transition: border-color 0.15s, transform 0.15s; }
+  .card:hover { border-color: var(--blue-link); text-decoration: none; transform: translateY(-1px); }
+  .card .title { font-size: 15px; font-weight: 600; color: var(--text-1); margin: 0 0 6px; }
+  .card .desc { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-2); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Salesforce Build System Docs</h1>
+  <div class="subtitle">How the agents, hooks, skills, and playbook fit together</div>
+</header>
+
+<div class="hero">
+  <p>Reference documentation for the Claude Code-driven Salesforce build system: the workflow shapes, the entry-path matrix, the coding rules every worker enforces, and the per-worker step-by-step playbooks.</p>
+</div>
+
+<div class="section">
+  <h2>Process &amp; rules</h2>
+  <div class="grid">
+    <a class="card" href="BUILD-PROCESS.html">
+      <div class="title">Build Process</div>
+      <div class="desc">How <code>.md</code> state files flow through Conversational, Quick-Build, and Drive-Build modes.</div>
+    </a>
+    <a class="card" href="playbook.html">
+      <div class="title">Playbook</div>
+      <div class="desc">Authoritative coding rules: Apex, SOQL, LWC, Flow, metadata. The single source of truth every worker reads.</div>
+    </a>
+    <a class="card" href="HOOKS.html">
+      <div class="title">Hooks</div>
+      <div class="desc">SessionStart, PreToolUse, PostToolUse, Stop, PermissionRequest — what fires when, and why.</div>
+    </a>
+    <a class="card" href="SKILLS.html">
+      <div class="title">Skills</div>
+      <div class="desc">User-invocable skills (slash commands): when to use each, what they produce.</div>
+    </a>
+    <a class="card" href="SHAPES.html">
+      <div class="title">Shapes &amp; Tiers</div>
+      <div class="desc">Task shape inventory — mechanical / standard / critical tiers and the routing matrix.</div>
+    </a>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Worker workflows</h2>
+  <div class="grid">
+    <a class="card" href="worker-workflows/index.html">
+      <div class="title">Worker workflows index</div>
+      <div class="desc">Hub linking the per-worker step-by-step pages (Apex, LWC, Flow, Metadata, Research, Review).</div>
+    </a>
+    <a class="card" href="worker-workflows.html">
+      <div class="title">All workers at a glance</div>
+      <div class="desc">Combined side-by-side view of every worker's lifecycle.</div>
+    </a>
+    <a class="card" href="worker-workflows/apex.html">
+      <div class="title">Apex worker</div>
+      <div class="desc">Class / trigger / queueable / batch / test implementation lifecycle.</div>
+    </a>
+    <a class="card" href="worker-workflows/lwc.html">
+      <div class="title">LWC worker</div>
+      <div class="desc">Component, Aura, Jest test implementation lifecycle.</div>
+    </a>
+    <a class="card" href="worker-workflows/flow.html">
+      <div class="title">Flow worker</div>
+      <div class="desc">Record-triggered / screen / autolaunched / scheduled / platform-event flow lifecycle.</div>
+    </a>
+    <a class="card" href="worker-workflows/metadata.html">
+      <div class="title">Metadata worker</div>
+      <div class="desc">Custom object / field / validation rule / layout / permission set / flexipage lifecycle.</div>
+    </a>
+    <a class="card" href="worker-workflows/research.html">
+      <div class="title">Research worker</div>
+      <div class="desc">Read-only research worker — parallel search fanout that primes downstream workers.</div>
+    </a>
+    <a class="card" href="worker-workflows/review.html">
+      <div class="title">Review worker</div>
+      <div class="desc">Two-stage review (spec compliance + code quality) gating every builder DONE.</div>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <p>Source mirrored from <code>~/.claude/</code> and <code>spencerdev/docs/</code>. Updates by re-running the assembly script and pushing.</p>
+</footer>
+
+</div>
+</body>
+</html>

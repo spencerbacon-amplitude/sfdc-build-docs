@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Build Process — Conversational vs Quick-Build vs Drive-Build</title>
+<link rel="stylesheet" href="dark-theme.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Build process — Conversational vs Quick-Build vs Drive-Build</h1>
+  <div class="subtitle">How <code>.md</code> state files flow through the three modes · drafted 2026-05-22</div>
+</header>
+
+<div class="toc">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#at-a-glance">At-a-glance file comparison</a></li>
+    <li><a href="#lifecycle">Lifecycle timelines (side-by-side)</a></li>
+    <li><a href="#status">Status state machines</a></li>
+    <li><a href="#files">File-by-file deep dive</a></li>
+    <li><a href="#hooks">Hook touchpoints</a></li>
+    <li><a href="#decisions">Why this split exists</a></li>
+  </ul>
+</div>
+
+<h2 id="at-a-glance">At-a-glance file comparison</h2>
+
+<p>Three modes share the same playbook + always-on rules but differ in how much state they persist. Quick-build and drive-build write to the same <code>.claude/specs/</code> + <code>.pm/&lt;slug&gt;/</code> shapes so the dashboard picks them up identically. Conversational writes nothing structural — it's the trivial-change escape hatch.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 26%;">File</th>
+      <th style="width: 13%;"><span class="pill conv">conversational</span></th>
+      <th style="width: 13%;"><span class="pill quick">quick-build</span></th>
+      <th style="width: 13%;"><span class="pill drive">drive-build</span></th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>.claude/specs/&lt;slug&gt;.md</code></td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td>The spec — frontmatter + ticket + ACs + approach + files affected + success criteria.</td></tr>
+    <tr><td><code>.claude/specs/&lt;slug&gt;.html</code></td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td>Rendered dark-theme view of the spec. Re-rendered at two checkpoints (initial + merge-prep).</td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/TODO.md</code></td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td>Task list with statuses. <strong>Source of truth for dashboard progress.</strong></td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/QUESTIONS.md</code></td><td class="no">—</td><td class="partial">Q-FINAL + ad-hoc</td><td class="yes">Q-PLAN + Q-FINAL + ad-hoc + Q-DRIFT</td><td>Human gates. Stop hook scans for "awaiting" strings and Slack-pings on new questions.</td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/LOG.md</code></td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td>One-line audit trail. Dashboard reads recent-activity column.</td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/PROJECT_PLAN.md</code></td><td class="no">—</td><td class="no">— spec IS the plan</td><td class="yes">✓</td><td>Drive-build's structured plan + risk-review output + scope boundaries.</td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/CONTEXT.md</code></td><td class="no">—</td><td class="no">— read in-session</td><td class="yes">✓</td><td>Drive-build's persisted research dump from <code>sfdc-research-worker</code>.</td></tr>
+    <tr><td><code>.pm/&lt;slug&gt;/FINDINGS/</code></td><td class="no">—</td><td class="no">— single inline review</td><td class="yes">per-task files</td><td>Drive-build's per-task review findings (e.g. <code>T-008-r1.md</code>).</td></tr>
+    <tr><td><code>.pm/DEPLOYS.md</code></td><td class="yes">auto</td><td class="yes">auto</td><td class="yes">auto</td><td>Repo-root deploy log. Written by PostToolUse hook on every <code>sf project deploy start</code> — fires regardless of mode.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+<strong>Conversational mode is intentionally dashboard-invisible.</strong> Trivial single-line changes don't justify a spec or state files — they ship in one turn, verified by <code>deploy Succeeded</code>. The only artifact a conversational change leaves behind is a git commit and a row in <code>.pm/DEPLOYS.md</code> from the PostToolUse hook.
+</div>
+
+<div class="callout info">
+<strong>Quick-build and drive-build are both dashboard-visible</strong> because the dashboard keys off <code>.pm/&lt;slug&gt;/TODO.md</code> existing and the spec frontmatter <code>status:</code> field — both of which they write identically.
+</div>
+
+<h2 id="lifecycle">Lifecycle timelines (side-by-side)</h2>
+
+<p>All three modes converge on a deployed change but differ sharply in ceremony. Conversational is one turn; quick-build is one session; drive-build is an orchestrated loop.</p>
+
+<div class="timeline">
+
+  <div class="col">
+    <h3><span class="pill conv">conversational</span> — one turn, trivial change</h3>
+    <ol>
+      <li>User describes a trivial change (typo, comment, single-line rename, isolated field-add with no consumers)</li>
+      <li>Create worktree (CLAUDE.md hard rule — required for any code edit, even one-line)</li>
+      <li>Edit · deploy</li>
+      <li>Verification = <code>deploy Succeeded</code></li>
+      <li>Commit · merge to master · cleanup worktree</li>
+    </ol>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px;"><em>No spec, no <code>.pm/&lt;slug&gt;/</code>, no Q-FINAL, no dashboard card. The only durable artifact is the git commit + <code>.pm/DEPLOYS.md</code> row from the PostToolUse hook.</em></p>
+  </div>
+
+  <div class="col">
+    <h3><span class="pill quick">quick-build</span> — sequential, one session</h3>
+    <ol>
+      <li>Read Jira (if any) OR conversational ask</li>
+      <li>Explore subagent → file inventory</li>
+      <li><strong>Plan presentation</strong> + <strong>tier eligibility check</strong> (any critical → halt, route to drive-build)</li>
+      <li class="gate">User approves plan conversationally <em>(this IS the plan gate)</em></li>
+      <li>Write <code>.claude/specs/&lt;slug&gt;.md</code> · create <code>.pm/&lt;slug&gt;/{TODO,QUESTIONS,LOG}.md</code> · render spec <code>.html</code></li>
+      <li>Create worktree · flip spec <code>status: in-progress</code></li>
+      <li>Implement tasks · mirror TaskList → <code>TODO.md</code> on each transition · append to <code>LOG.md</code></li>
+      <li>Deploy · verification gate · single inline review pass</li>
+      <li>Design doc (if Jira)</li>
+      <li>Write Q-FINAL to <code>QUESTIONS.md</code></li>
+      <li class="gate">User answers Q-FINAL with <code>merge it</code></li>
+      <li>Re-render spec <code>.html</code> · stage + commit · merge to master · close Q-FINAL · post Jira comment (if Jira) · flip spec <code>status: deployed</code></li>
+    </ol>
+  </div>
+
+  <div class="col">
+    <h3><span class="pill drive">drive-build</span> — parallel waves, multi-iteration</h3>
+    <ol>
+      <li>Resolve slug · check spec exists (chain to <code>/grill</code> if not)</li>
+      <li>Read <code>.claude/specs/&lt;slug&gt;.md</code> · pre-research dispatch → <code>CONTEXT.md</code></li>
+      <li>Plan: write <code>PROJECT_PLAN.md</code> + <code>TODO.md</code> with <code>shape:</code> classifications</li>
+      <li>Risk-review Explore → append to <code>PROJECT_PLAN.md</code> <code>## Risks to discuss</code></li>
+      <li>Write Q-PLAN to <code>QUESTIONS.md</code></li>
+      <li class="gate">User answers Q-PLAN with approval</li>
+      <li>Wave dispatch: fan out workers in parallel · each gets sliced playbook excerpts + <code>Playbook focus:</code> pointer per shape</li>
+      <li>Workers return DONE → verification gate per task → <code>[r]</code></li>
+      <li>Two-stage review parallel: spec (Sonnet) + quality (Haiku); CHANGES_REQUESTED → findings to <code>FINDINGS/&lt;T-NNN&gt;-r&lt;N&gt;.md</code> → re-dispatch fix worker</li>
+      <li>Drift audit: check picklist consumer reachability + spec drift → Q-DRIFT if anything fires</li>
+      <li>Write Q-FINAL to <code>QUESTIONS.md</code></li>
+      <li class="gate">User answers Q-FINAL with approval</li>
+      <li>Merge all worker branches in dependency order · close Q-FINAL · jira-deploy-comment + design-doc-writer · flip spec <code>status: deployed</code></li>
+    </ol>
+  </div>
+
+</div>
+
+<h2 id="status">Status state machines</h2>
+
+<h3>Spec frontmatter <code>status:</code> <span class="pill quick">quick-build</span> <span class="pill drive">drive-build</span></h3>
+<div class="states">
+  <span class="pill start">ready-to-build</span><span class="arrow">→</span>
+  <span class="pill active">in-progress</span><span class="arrow">→</span>
+  <span class="pill gate">deployed</span><span class="arrow">→</span>
+  <span class="pill terminal">done</span>
+</div>
+<p style="font-size: 13px; color: var(--text-2);"><code>ready-to-build</code>: spec written, build not started. <code>in-progress</code>: worktree exists, code work happening. <code>deployed</code>: merged to master, awaiting Copado prod promotion. <code>done</code>: prod-live, fully complete (human flips this post-Copado). <em>Also: <code>planning</code> for scoping-only specs; <code>shipped</code> is a backwards-compat alias for <code>deployed</code>. Conversational mode has no spec — no status to track.</em></p>
+
+<h3>Task status in <code>TODO.md</code></h3>
+<div class="states">
+  <span class="pill start">[ ] ready</span><span class="arrow">→</span>
+  <span class="pill active">[~] running</span><span class="arrow">→</span>
+  <span class="pill gate">[r] review</span><span class="arrow">→</span>
+  <span class="pill terminal">[x] done</span>
+</div>
+<p style="font-size: 13px; color: var(--text-2);"><strong>Quick-build:</strong> skips <code>[r]</code> — single inline review at end. <strong>Drive-build:</strong> uses all four; <code>[r]</code> flips back to <code>[~]</code> on CHANGES_REQUESTED. Also <code>[?]</code> for BLOCKER/blocked.</p>
+
+<h3>Question lifecycle in <code>QUESTIONS.md</code></h3>
+<div class="states">
+  <span class="pill start">written under 🔴 OPEN</span><span class="arrow">→</span>
+  <span class="pill active">awaiting answer</span><span class="arrow">→</span>
+  <span class="pill gate">user types under ### ANSWER</span><span class="arrow">→</span>
+  <span class="pill terminal">moved to ✅ RESOLVED</span>
+</div>
+<p style="font-size: 13px; color: var(--text-2);">Stop hook T2 counts "awaiting" strings per build, compares to <code>.last_pinged_count</code>. New count > last → Slack ping. Skill resolves by moving the block to RESOLVED + appending date + answer text.</p>
+
+<h2 id="files">File-by-file deep dive</h2>
+
+<div class="card">
+  <h3><code>.claude/specs/&lt;slug&gt;.md</code> <span class="pill both">both</span></h3>
+  <div class="meta">Spec · written once, status field updated 2-3 times over lifecycle</div>
+  <h4>Owner</h4>
+  <p>Quick-build: Step 3b writes it after the conversational plan is approved.<br>
+  Drive-build: <code>/grill</code> writes it (or you write it by hand), drive-build's Step 1 reads it.</p>
+  <h4>Frontmatter</h4>
+  <pre><code>---
+slug: &lt;kebab-case&gt;
+jira: GTMSYS-12345        # OMIT for conversational quick-build
+created: 2026-05-22
+status: ready-to-build    # → in-progress → deployed → done
+build_skill: sfdc-quick-build | sfdc-drive-build | sfdc-guided-build
+---</code></pre>
+  <h4>Body sections (canonical)</h4>
+  <p>Ticket description (or Ask) · Acceptance criteria · Approach · Files affected · Success criteria · Decisions / Open questions.</p>
+  <h4>Consumed by</h4>
+  <p>Both build skills (read at every iteration), <code>design-doc-writer</code> (Step 7c), dashboard (renders <code>.html</code> in the right pane), SessionStart hook S2 (prints frontmatter on resume).</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/TODO.md</code> <span class="pill both">both</span></h3>
+  <div class="meta">Task list · rewritten on every TaskCreate / TaskUpdate</div>
+  <h4>Format</h4>
+  <pre><code># TODO — &lt;slug&gt;
+
+Statuses: [ ] ready · [~] in progress · [r] in review · [?] blocked · [x] done
+
+- [x] T-001 (sfdc-metadata-worker) — Add Custom_Foo__c field on Account
+  files: force-app/main/default/objects/Account/fields/Custom_Foo__c.field-meta.xml
+  success: deploy returns Succeeded
+- [~] T-002 (sfdc-apex-worker) — depends:T-001 — Read Custom_Foo__c in handler
+  files: force-app/main/default/classes/AccountTriggerHandler.cls
+  shape: apex-trigger-handler-edit, apex-soql-edit
+  success: deploy + test pass, coverage ≥80%</code></pre>
+  <h4>Quick-build vs drive-build</h4>
+  <p>Same format. Quick-build statuses cycle through <code>[ ] → [~] → [x]</code> (single review pass, no <code>[r]</code> phase). Drive-build adds <code>[r]</code> for tasks under spec/quality review, and may use <code>[?]</code> for worker BLOCKER results.</p>
+  <h4>Consumed by</h4>
+  <p>Drive-build dashboard (parses task counts + statuses for the Active card), SessionStart hook S2 (prints first 40 lines on resume).</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/QUESTIONS.md</code> <span class="pill both">both</span></h3>
+  <div class="meta">Human gates · grows append-only, questions move from 🔴 OPEN to ✅ RESOLVED</div>
+  <h4>Format</h4>
+  <pre><code># Questions
+
+═══════════════════════════════════════════════════════════════
+🔴 OPEN
+═══════════════════════════════════════════════════════════════
+
+## Q-FINAL · build complete — review for merge · opened 2026-05-22
+
+### Question
+&lt;concrete question for the user&gt;
+
+### Context
+&lt;facts + state + verification evidence&gt;
+
+### Why blocked
+&lt;one sentence — what only the user can decide&gt;
+
+### ANSWER
+awaiting
+
+═══════════════════════════════════════════════════════════════
+✅ RESOLVED
+═══════════════════════════════════════════════════════════════</code></pre>
+  <h4>Question types by skill</h4>
+  <table>
+    <thead><tr><th>Type</th><th>When</th><th>Quick</th><th>Drive</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill gate">Q-PLAN</span></td><td>Plan approval before any code</td><td class="no">— spec approval IS the plan gate (saves one round trip)</td><td class="yes">✓</td></tr>
+      <tr><td><span class="pill gate">Q-FINAL</span></td><td>Merge approval after build complete</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td><span class="pill gate">Q-BLOCKER</span></td><td>Mid-build dead-end (platform limit, ambiguous AC, org-call needed)</td><td class="yes">✓ ad-hoc</td><td class="yes">✓ ad-hoc</td></tr>
+      <tr><td><span class="pill gate">Q-DRIFT</span></td><td>Drift audit finds plan vs. impl mismatch pre-merge</td><td class="no">— only one inline review pass</td><td class="yes">✓</td></tr>
+      <tr><td><span class="pill gate">Q-EXEC</span></td><td>Step needs a one-off human action (run anon Apex, hit prod query)</td><td class="yes">ad-hoc</td><td class="yes">ad-hoc</td></tr>
+    </tbody>
+  </table>
+  <h4>Consumed by</h4>
+  <p>Stop hook T2 (counts "awaiting" strings, Slack-pings on new ones). SessionStart hook S2 (shows count of open Qs on resume). Dashboard (renders open questions on Active card with answer-in-place edit form).</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/LOG.md</code> <span class="pill both">both</span></h3>
+  <div class="meta">Audit trail · append-only, one line per event</div>
+  <h4>Format</h4>
+  <pre><code>2026-05-22 09:14 — spec written + state dir created
+2026-05-22 09:17 — worktree created at .claude/worktrees/quick-build on branch feature/foo
+2026-05-22 09:31 — deploy 0AfVG00000JqAb50 Succeeded
+2026-05-22 09:33 — tests 9/9 pass, coverage 96% on SlaUtils
+2026-05-22 09:34 — Q-FINAL written, awaiting merge approval
+2026-05-22 09:42 — merged a418c968 to master, spec status → deployed</code></pre>
+  <h4>Consumed by</h4>
+  <p>SessionStart hook S2 (shows last 15 lines on resume — primary "where was I" reminder). Dashboard recent-activity column. Manual reading for post-mortems.</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/PROJECT_PLAN.md</code> <span class="pill drive">drive-build only</span></h3>
+  <div class="meta">Plan + risk review · written once at Step 2a, updated only if plan revises</div>
+  <h4>Why drive-build needs this and quick-build doesn't</h4>
+  <p>Drive-build runs a risk-review Explore subagent on the plan, persists the findings under <code>## Risks to discuss</code>, and gates on user approval via Q-PLAN. Quick-build skips both — for ≤8 mechanical/standard tasks the conversational plan presentation at Step 3 IS the plan + risk review + gate.</p>
+  <h4>Sections</h4>
+  <p>Goal · Approach · Scope boundaries · Risks to discuss (filled by Explore) · Open items resolved.</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/CONTEXT.md</code> <span class="pill drive">drive-build only</span></h3>
+  <div class="meta">Research dump · written once or appended on gap-fills</div>
+  <h4>Why drive-build needs this</h4>
+  <p>Workers dispatched in parallel waves can't share session memory. CONTEXT.md is the shared codebase grounding that each worker reads at dispatch — it holds full file contents from <code>sfdc-research-worker</code> so workers don't have to re-explore.</p>
+  <h4>Why quick-build doesn't</h4>
+  <p>Single session, no worker fanout. Research stays in the conversation context where it was gathered.</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/&lt;slug&gt;/FINDINGS/&lt;T-NNN&gt;-r&lt;N&gt;.md</code> <span class="pill drive">drive-build only</span></h3>
+  <div class="meta">Per-task review findings · one file per (task × review-round)</div>
+  <h4>Why drive-build needs this</h4>
+  <p>Two-stage review (spec + quality) runs per task in parallel. When a review returns CHANGES_REQUESTED, the findings need to be persisted so the fix worker can read them at dispatch — they can't be passed via session memory because the fix worker is a fresh Agent.</p>
+  <h4>Quick-build's equivalent</h4>
+  <p>The single inline review pass happens in-session before Q-FINAL. Any findings are addressed conversationally and refixed in the same session — no persistence needed.</p>
+</div>
+
+<div class="card">
+  <h3><code>.pm/DEPLOYS.md</code> <span class="pill both">both — auto</span></h3>
+  <div class="meta">Repo-root deploy ledger · PostToolUse hook P1 writes it</div>
+  <p>Every <code>sf project deploy start</code> appends <code>&lt;ts&gt; | &lt;status&gt; | &lt;org&gt; | &lt;deployId&gt;</code>. Skill-agnostic — fires on any deploy, regardless of which skill triggered it.</p>
+</div>
+
+<h2 id="hooks">Hook touchpoints</h2>
+
+<p>The hooks that read or write these <code>.md</code> files. Full hook inventory at <a href="HOOKS-AUDIT.md">HOOKS-AUDIT.md</a>.</p>
+
+<table>
+  <thead><tr><th>Hook</th><th>Event</th><th>Touches</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><strong>S2</strong> resume scanner</td><td>SessionStart</td><td>Reads spec frontmatter · <code>TODO.md</code> (first 40) · <code>LOG.md</code> (last 15) · <code>QUESTIONS.md</code> "awaiting" count</td><td>Prints "where was I" context block on every session boot</td></tr>
+    <tr><td><strong>T1</strong> Claude-stopped Slack</td><td>Stop</td><td>Reads spec frontmatter</td><td>Silences if any spec <code>status: in-progress|in_progress|planning</code>. Otherwise pings <code>$AMP_SLACK_WEBHOOK</code></td></tr>
+    <tr><td><strong>T2</strong> awaiting-Q Slack</td><td>Stop</td><td>Reads <code>QUESTIONS.md</code> "awaiting" count vs <code>.last_pinged_count</code></td><td>Slack-pings on new questions across any build</td></tr>
+    <tr><td><strong>P1</strong> deploy logger</td><td>PostToolUse (Bash)</td><td>Appends to <code>.pm/DEPLOYS.md</code></td><td>Automatic deploy ledger</td></tr>
+    <tr><td><strong>R1</strong> auto-allow-edit</td><td>PreToolUse (Edit/Write)</td><td>Path check: allows <code>.pm/</code> · <code>.claude/</code> · <code>.md</code> · etc.</td><td>No prompts on these paths</td></tr>
+  </tbody>
+</table>
+
+<h2 id="decisions">Why this split exists</h2>
+
+<div class="callout info">
+<strong>Three modes, three ceremony levels.</strong> The split exists because not every change deserves the same amount of structure:
+<ul style="margin: 8px 0 0; padding-left: 20px;">
+  <li><strong>Conversational</strong> — one-turn trivial changes. No spec, no <code>.pm/</code>. Ceremony cost would exceed the change.</li>
+  <li><strong>Quick-build</strong> — small builds (1–8 tasks, all mechanical/standard tier). Drops the Q-PLAN gate, the worker subagent fanout, and the per-task two-stage review with persisted findings — one inline review at end is enough.</li>
+  <li><strong>Drive-build</strong> — multi-task or critical-tier work. Worth the orchestrator, parallel workers, two-stage review per task, and persisted findings because the blast radius justifies it.</li>
+</ul>
+</div>
+
+<div class="callout warn">
+<strong>The tier check at quick-build Step 3 is the safety valve.</strong> Any task that maps to a <code>critical</code>-tier shape in drive-build's playbook focus table (TriggerDispatcher edits, picklist-value-add with consumer fanout, shared-LWC <code>@api</code> changes, picklist-consumer LWC edits) forces a halt and a route to <code>/sfdc-drive-build</code>. The trade is "fast for safe work" — not "fast at all costs."
+</div>
+
+<h3>What all three share</h3>
+<ul>
+  <li><strong>Worktree-mandatory</strong> for any code edit (CLAUDE.md hard rule, enforced by PreToolUse hook R5 on <code>force-app/</code>)</li>
+  <li><strong>Playbook compliance</strong> per <code>docs/sfdc-playbook.md</code></li>
+  <li><strong>Verification gate</strong> — at minimum <code>deploy Succeeded</code></li>
+  <li><strong>PostToolUse deploy logger</strong> appends to <code>.pm/DEPLOYS.md</code></li>
+</ul>
+
+<h3>What quick-build and drive-build share (beyond the above)</h3>
+<ul>
+  <li>Spec at <code>.claude/specs/&lt;slug&gt;.md</code> with consistent frontmatter shape</li>
+  <li><code>.pm/&lt;slug&gt;/</code> state dir so dashboard renders both identically</li>
+  <li>Q-FINAL human-gate before merge</li>
+  <li>Verification gate before review (deploy + tests + diff scope)</li>
+  <li>Two-stage logic — spec compliance first, then code-quality playbook check (drive-build runs them as parallel sub-agent dispatches; quick-build runs them inline back-to-back)</li>
+  <li>Same merge ritual: re-render spec <code>.html</code>, pre-merge worktree audit, <code>--no-ff</code> merge, worktree cleanup</li>
+</ul>
+
+<h3>The "kick to drive-build" path</h3>
+<p>If quick-build's tier check at Step 3 finds a critical task or &gt;8 tasks, it writes the spec with <code>build_skill: sfdc-drive-build</code> and halts with a visible re-fire reminder. The user then runs <code>/sfdc-drive-build &lt;slug&gt;</code> (or <code>/loop /sfdc-drive-build &lt;slug&gt;</code>) and drive-build picks up from the spec — no duplicated work.</p>
+
+<hr style="border: none; border-top: 1px solid var(--border); margin: 48px 0 24px;">
+<p style="color: var(--text-3); font-size: 12px; text-align: center;">
+  Companion docs: <a href="HOOKS-AUDIT.md">HOOKS-AUDIT.md</a> · <code>~/.claude/skills/sfdc-quick-build/SKILL.md</code> · <code>~/.claude/skills/sfdc-drive-build/SKILL.md</code> · <code>CLAUDE.md</code>
+</p>
+
+</div>
+</body>
+</html>

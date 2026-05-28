@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>SFDC worker workflows — index</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <h1>
+            SFDC worker workflows
+            <span class="sub">7 pages, one per worker</span>
+        </h1>
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-*-worker.md</code> · paired with the combined view at
+            <code>docs/worker-workflows.html</code> · matches post sf-skills-mining-pass-2 (master
+            <code>5c16b38d</code>).
+        </div>
+
+        <p>
+            Each card opens a dedicated page documenting one worker end-to-end — numbered step cards, file paths, tag
+            pills, hard rules. For a side-by-side comparison of Apex + LWC + Review (the highest-volume builders), see
+            the combined view card at the bottom.
+        </p>
+
+        <div class="hub-grid">
+            <a class="hub-card apex" href="apex.html">
+                <div class="name">🟧 Apex worker</div>
+                <div class="role">
+                    Writes Apex classes, triggers, queueables, batches, and test classes. Owns the 80%-coverage gate and
+                    the code-analyzer pass.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-apex-worker.md</div>
+            </a>
+
+            <a class="hub-card lwc" href="lwc.html">
+                <div class="name">🟪 LWC worker</div>
+                <div class="role">
+                    Writes LWC and Aura bundles. Owns the lint + jest + targeted-deploy gate. Reads the PICKLES design
+                    doc when one exists.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-lwc-worker.md</div>
+            </a>
+
+            <a class="hub-card flow" href="flow.html">
+                <div class="name">🟩 Flow worker</div>
+                <div class="role">
+                    Authors record-triggered, screen, autolaunched, scheduled, and platform-event flows. Always deploys
+                    as Draft — activation needs explicit user approval.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-flow-worker.md</div>
+            </a>
+
+            <a class="hub-card metadata" href="metadata.html">
+                <div class="name">🟫 Metadata worker</div>
+                <div class="role">
+                    Schema and metadata: custom objects, fields, validation rules, layouts, permission sets, record
+                    types, flexipages, tabs, applications, list views. Watches the metadata landmines.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-metadata-worker.md</div>
+            </a>
+
+            <a class="hub-card research" href="research.html">
+                <div class="name">🟦 Research worker</div>
+                <div class="role">
+                    Read-only. Fans out searches in parallel, returns full file contents so downstream workers don't
+                    re-read. Invoked at kickoff and on demand.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-research-worker.md</div>
+            </a>
+
+            <a class="hub-card review" href="review.html">
+                <div class="name">🟦 Review worker</div>
+                <div class="role">
+                    Read-only. Runs after every builder DONE in one of two modes — <code>spec</code> (does it meet the
+                    ACs?) or <code>quality</code> (does it follow the playbook?). Both must approve.
+                </div>
+                <div class="src">~/.claude/agents/sfdc-review-worker.md</div>
+            </a>
+
+            <a class="hub-card combined" href="../worker-workflows.html">
+                <div class="name">All workers at a glance</div>
+                <div class="role">
+                    Combined view: Apex + LWC side-by-side, with Review worker spec/quality modes below. Same step-card
+                    pattern, full visual diff. The original artifact this set was split from.
+                </div>
+                <div class="src">docs/worker-workflows.html</div>
+            </a>
+        </div>
+
+        <h2>How these pages relate to the prompts</h2>
+        <p>
+            Each per-worker page is a synthesis of its source prompt at
+            <code>~/.claude/agents/sfdc-&lt;x&gt;-worker.md</code>, re-shaped into a numbered visual flow. The prompts
+            stay authoritative — if the page and the prompt disagree, the prompt wins. The link audit at
+            <code>.pm/worker-docs-pages/LINK-AUDIT.md</code> (gitignored) keeps the step-by-step mapping fresh.
+        </p>
+
+        <h2>Color-coding</h2>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--apex)"></div>
+                Apex worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--lwc)"></div>
+                LWC worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--flow)"></div>
+                Flow worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--metadata)"></div>
+                Metadata worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--research)"></div>
+                Research worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--review)"></div>
+                Review worker
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--shared)"></div>
+                Shared inputs
+            </div>
+            <div class="legend-item"><span class="tag read">read</span></div>
+            <div class="legend-item"><span class="tag write">write</span></div>
+            <div class="legend-item"><span class="tag shell">shell</span></div>
+            <div class="legend-item"><span class="tag gate">gate</span></div>
+        </div>
+
+        <h2>Sources</h2>
+        <ul class="sources">
+            <li><code>~/.claude/agents/sfdc-apex-worker.md</code></li>
+            <li><code>~/.claude/agents/sfdc-lwc-worker.md</code></li>
+            <li><code>~/.claude/agents/sfdc-flow-worker.md</code></li>
+            <li><code>~/.claude/agents/sfdc-metadata-worker.md</code></li>
+            <li><code>~/.claude/agents/sfdc-research-worker.md</code></li>
+            <li><code>~/.claude/agents/sfdc-review-worker.md</code></li>
+            <li><a href="../playbook.html"><code>docs/sfdc-playbook.md</code></a> — referenced by every builder</li>
+            <li><code>CLAUDE.md</code> — always-on workflow rules</li>
+        </ul>
+    </body>
+</html>

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>sfdc-apex-worker — workflow</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="breadcrumb"><a href="index.html">← Worker workflows index</a></div>
+
+        <div class="lane-bar apex">
+            <h1>
+                🟧 sfdc-apex-worker
+                <span class="sub">Apex implementation worker — classes, triggers, queueables, batches, tests</span>
+            </h1>
+            <div class="lane">
+                lane: <code>force-app/main/default/classes/</code>, <code>force-app/main/default/triggers/</code>
+            </div>
+        </div>
+
+        <div class="meta">
+            Sourced from <code>~/.claude/agents/sfdc-apex-worker.md</code> · model <code>sonnet</code> · tools
+            <code>Read · Write · Edit · Glob · Grep · Bash</code>.
+        </div>
+
+        <p>
+            Receives one task from <code>/sfdc-drive-build</code> and executes it end-to-end: implement → cover ≥ 80% →
+            code-analyzer → targeted deploy → per-task commit → DONE / BLOCKER / FAILED. Never touches LWC / Aura /
+            flows / object metadata — wrong-lane work returns BLOCKER and the orchestrator re-routes.
+        </p>
+
+        <div class="shared">
+            <h2>0 · Always-on inputs (every task)</h2>
+            <div class="shared-grid">
+                <div class="shared-card">
+                    <div class="file">Task brief from /sfdc-drive-build</div>
+                    <div class="desc">
+                        Task ID, description, ACs, success criterion, pre-fetched files. May include a
+                        <code>## Playbook excerpts</code> section — if present, do not re-open the playbook.
+                    </div>
+                </div>
+                <div class="shared-card">
+                    <div class="file">CLAUDE.md → Always-on workflow rules</div>
+                    <div class="desc">Goal-driven execution · fresh evidence · two-stage review.</div>
+                </div>
+                <div class="shared-card">
+                    <div class="file"><a href="../playbook.html">docs/sfdc-playbook.md</a> (fallback only)</div>
+                    <div class="desc">
+                        Read only if no <code>## Playbook excerpts</code> section in the brief. Sections that apply:
+                        Apex hard-stops, authoring patterns, SOQL discipline, test discipline, code analyzer, existing
+                        project frameworks.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flow">
+            <div class="step" data-n="1">
+                <h3>Receive task <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>orchestrator-supplied: task ID, ACs, success criterion, pre-fetched files</li>
+                </ul>
+                <p class="note">Ambiguous (FLS, sharing, business logic) → BLOCKER, don't guess.</p>
+            </div>
+
+            <div class="step" data-n="2">
+                <h3>Read authoritative rules <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>brief's <code>## Playbook excerpts</code> section (preferred)</li>
+                    <li>fallback: <a href="../playbook.html#apex-hard-stops">docs/sfdc-playbook.md#apex-hard-stops</a></li>
+                    <li>fallback: <a href="../playbook.html#apex-authoring-patterns">docs/sfdc-playbook.md#apex-authoring-patterns</a></li>
+                    <li>fallback: <a href="../playbook.html#soql-discipline">docs/sfdc-playbook.md#soql-discipline</a></li>
+                    <li>fallback: <a href="../playbook.html#apex-test-discipline">docs/sfdc-playbook.md#apex-test-discipline</a></li>
+                    <li>fallback: <a href="../playbook.html#code-analyzer-pass">docs/sfdc-playbook.md#code-analyzer-pass</a></li>
+                    <li>fallback: <a href="../playbook.html#existing-project-frameworks-cite-dont-restate">docs/sfdc-playbook.md#existing-project-frameworks-cite-dont-restate</a></li>
+                </ul>
+                <p class="note">Excerpts are scoped to your task type — re-reading the full playbook wastes context.</p>
+            </div>
+
+            <div class="step" data-n="3">
+                <h3>
+                    Read starter scaffolds <span class="tag read">read</span>
+                    <span class="aside">(new files only — not for edits of existing classes)</span>
+                </h3>
+                <ul class="files">
+                    <li>docs/apex-templates/README.md — project deltas</li>
+                    <li>docs/apex-templates/assets/&lt;type&gt;.cls.tpl — 14 scaffolds</li>
+                    <li>docs/apex-test-templates/README.md</li>
+                    <li>docs/apex-test-templates/assets/*Test.cls.tpl</li>
+                    <li>docs/apex-test-templates/references/{assertion,async,mocking,data-factory}.md</li>
+                </ul>
+                <p class="note">A template deployed verbatim will fail review. Apply project deltas first.</p>
+            </div>
+
+            <div class="step" data-n="4">
+                <h3>
+                    Read platform-nuance refs <span class="tag read">read</span>
+                    <span class="aside">(as applicable to the task)</span>
+                </h3>
+                <ul class="files">
+                    <li>docs/data-references/querying-soql/SKILL.md — semi-joins, polymorphic, bulk patterns</li>
+                    <li>docs/debug-references/running-apex-tests/SKILL.md — test invocation patterns</li>
+                    <li>docs/deploy-references/SKILL.md — deploy patterns common to all Apex deploys</li>
+                    <li>docs/data-references/handling-data/SKILL.md — DataLoader patterns, bulk insert</li>
+                    <li>docs/{data,debug,deploy}-references/README.md — Amplitude deltas for each bundle</li>
+                </ul>
+                <p class="note">Added in sf-skills mining pass 2 (commit 8b28e71a).</p>
+            </div>
+
+            <div class="step" data-n="5">
+                <h3>Verify org target <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">sf config get target-org</li>
+                    <li class="gate">must be <code>spencerdev</code> — anything else → BLOCKER</li>
+                </ul>
+                <p class="note">
+                    Prod is read-only (CLAUDE.md hard rule). Never deploy elsewhere without an explicit in-task
+                    instruction this turn.
+                </p>
+            </div>
+
+            <div class="step" data-n="6">
+                <h3>Implement <span class="tag write">write</span></h3>
+                <ul class="files">
+                    <li class="write">force-app/main/default/classes/&lt;Name&gt;.cls</li>
+                    <li class="write">force-app/main/default/classes/&lt;Name&gt;.cls-meta.xml</li>
+                    <li class="write">force-app/main/default/triggers/&lt;Name&gt;.trigger (if applicable)</li>
+                </ul>
+                <p class="note">
+                    No comments, no docstrings, no error handling beyond what the task specified. Use Edit on existing
+                    files — match the file's existing style, don't impose a template's shape on it.
+                </p>
+            </div>
+
+            <div class="step" data-n="7">
+                <h3>Test + coverage gate <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="write">force-app/main/default/classes/&lt;Name&gt;Test.cls (+ meta)</li>
+                    <li class="shell">
+                        sf apex run test --class-names &lt;Name&gt;Test --result-format human --wait 5
+                    </li>
+                    <li class="gate">all tests pass · coverage ≥ 80% on changed class</li>
+                    <li class="gate">
+                        playbook test rules applied (one behavior per test, Assert class, 251+ records)
+                    </li>
+                </ul>
+                <p class="note">A passing run that violates test-discipline rules is still a fail — iterate.</p>
+            </div>
+
+            <div class="step" data-n="8">
+                <h3>Code analyzer <span class="tag shell">shell</span> <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li class="shell">sf code-analyzer run --target &lt;files&gt;</li>
+                    <li class="gate">remediate sev1/sev2 before deploy</li>
+                </ul>
+                <p class="note">Skip with note if tooling unavailable. Do not deploy with known sev1/sev2 in scope.</p>
+            </div>
+
+            <div class="step" data-n="9">
+                <h3>Deploy targeted <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">
+                        sf project deploy start --source-dir &lt;.cls&gt; --source-dir &lt;.cls-meta.xml&gt;
+                        --source-dir &lt;Test.cls&gt; --source-dir &lt;Test.cls-meta.xml&gt;
+                    </li>
+                    <li class="shell">sf project deploy report --job-id &lt;id&gt; (on failure)</li>
+                </ul>
+                <p class="note">
+                    Always include <code>-meta.xml</code> siblings and the test class. On failure: read the error, fix
+                    root cause, re-deploy. Never retry an identical deploy. Never <code>--no-verify</code> or skip
+                    hooks.
+                </p>
+            </div>
+
+            <div class="step" data-n="10">
+                <h3>Commit per-task <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git add &lt;explicit paths only&gt;</li>
+                    <li class="shell">git commit -m "[T-NNN] &lt;TODO.md description&gt;"</li>
+                </ul>
+                <p class="note">
+                    Never <code>git add -A</code> or <code>git add .</code> — other workers may have uncommitted changes
+                    on this branch. Stage explicitly by path. Never push.
+                </p>
+            </div>
+
+            <div class="step" data-n="11">
+                <h3>Verify before claiming DONE <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>deploy report's <code>Status: Succeeded</code> line</li>
+                    <li>test result's pass count + coverage line</li>
+                    <li>git log -1 --oneline to confirm the commit landed</li>
+                </ul>
+                <p class="note">Every number in the DONE message quotes fresh output. No hedging language.</p>
+            </div>
+
+            <div class="step" data-n="12">
+                <h3>Return DONE / BLOCKER / FAILED <span class="tag gate">gate</span></h3>
+                <ul class="files">
+                    <li>
+                        DONE: task ID · files touched · deploy ID + status · test pass count · coverage % · commit SHA ·
+                        playbook sections cited by anchor
+                    </li>
+                    <li>
+                        BLOCKER: <code>&lt;q&gt; | CONTEXT: &lt;why&gt; | NEED: &lt;unblocker&gt;</code> — revert
+                        partial edits, no commit
+                    </li>
+                    <li>
+                        FAILED: <code>&lt;reason&gt;</code> after exhausting reasonable fixes — revert partial edits, no
+                        commit
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Receiving code review findings (CHANGES_REQUESTED)</h2>
+        <p>
+            When the orchestrator re-delegates with review findings, follow this protocol — same gate, plus a
+            finding-by-finding response in the DONE message:
+        </p>
+        <div class="flow">
+            <div class="step" data-n="A">
+                <h3>Read every finding before changing code <span class="tag read">read</span></h3>
+                <ul class="files">
+                    <li>understand the full set first — don't fix in isolation</li>
+                    <li>BLOCKER + MAJOR must be fixed or explicitly justified for dismissal</li>
+                    <li>MINOR: fix if cheap, otherwise log "MINOR not addressed: &lt;reason&gt;"</li>
+                </ul>
+            </div>
+            <div class="step" data-n="B">
+                <h3>Follow-up commit on top <span class="tag shell">shell</span></h3>
+                <ul class="files">
+                    <li class="shell">git commit -m "[T-NNN] review fixes &lt;round&gt;"</li>
+                </ul>
+                <p class="note">Don't amend. Don't squash. Reviewer diffs the new commit cleanly.</p>
+            </div>
+            <div class="step" data-n="C">
+                <h3>Re-run the verification gate <span class="tag shell">shell</span></h3>
+                <p class="note">Tests, coverage, deploy, analyzer — same evidence requirements as round 1.</p>
+            </div>
+            <div class="step" data-n="D">
+                <h3>Report DONE with finding-by-finding response <span class="tag gate">gate</span></h3>
+                <p class="note">
+                    Format: <code>[BLOCKER] file:line — Fixed: &lt;what&gt;</code> ·
+                    <code>[MAJOR] ... — Fixed: ...</code> · <code>[MINOR] ... — Not addressed: &lt;reason&gt;</code>.
+                    Then standard DONE evidence below.
+                </p>
+            </div>
+        </div>
+
+        <h2>Hard rules</h2>
+        <table>
+            <tr>
+                <th style="width: 32%">Rule</th>
+                <th>Why</th>
+            </tr>
+            <tr>
+                <td>Never deploy to non-<code>spencerdev</code> orgs</td>
+                <td>CLAUDE.md "Production is read-only" hard rule.</td>
+            </tr>
+            <tr>
+                <td>Never push or merge</td>
+                <td>Commits go on the feature branch only. User reviews the diff before merge.</td>
+            </tr>
+            <tr>
+                <td>Never <code>git add -A</code> / <code>git add .</code></td>
+                <td>Other workers may have uncommitted changes — stage explicitly by path.</td>
+            </tr>
+            <tr>
+                <td>Never modify <code>.pm/</code> files</td>
+                <td>Orchestrator's lane.</td>
+            </tr>
+            <tr>
+                <td>Never modify LWC / Aura / object / flow metadata</td>
+                <td>BLOCKER → orchestrator routes to the right worker.</td>
+            </tr>
+            <tr>
+                <td>Never stall waiting for input</td>
+                <td>Ambiguity → BLOCKER → return immediately.</td>
+            </tr>
+            <tr>
+                <td>Never claim DONE without fresh evidence</td>
+                <td>Every number (deploy ID, test count, coverage %, commit SHA) from output read this iteration.</td>
+            </tr>
+            <tr>
+                <td>Never <code>--no-verify</code> or skip hooks</td>
+                <td>Pre-commit hooks (Husky + lint-staged) run on staged files for a reason.</td>
+            </tr>
+        </table>
+
+        <h2>What this worker can / cannot do</h2>
+        <div class="cando">
+            <div class="cando-card can">
+                <h3>Can</h3>
+                <ul>
+                    <li>
+                        Write or edit Apex classes, triggers, queueables, batches, schedulables, REST resources,
+                        invocables
+                    </li>
+                    <li>Create / extend test classes and run them with coverage</li>
+                    <li>Run <code>sf code-analyzer</code> and remediate sev1/sev2</li>
+                    <li>Deploy targeted to <code>spencerdev</code> and commit per-task on the feature branch</li>
+                    <li>
+                        Read <code>docs/data-references/</code>, <code>debug-references/</code>,
+                        <code>deploy-references/</code>
+                    </li>
+                </ul>
+            </div>
+            <div class="cando-card cannot">
+                <h3>Cannot</h3>
+                <ul>
+                    <li>Edit LWC / Aura / flows / objects / fields / permission sets / layouts</li>
+                    <li>Deploy to any org other than <code>spencerdev</code></li>
+                    <li>Push to a remote, merge, or auto-create PRs</li>
+                    <li>Modify <code>.pm/</code> orchestrator state files</li>
+                    <li>Skip pre-commit hooks or use <code>--no-verify</code></li>
+                    <li>Stall asking for input — ambiguity returns BLOCKER</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="related">
+            <h2>Related workers</h2>
+            <div class="related-grid">
+                <a class="related-card review" href="review.html">
+                    <div class="name">Review worker →</div>
+                    <div class="why">Runs after every Apex DONE — spec mode then quality mode. Both must approve.</div>
+                </a>
+                <a class="related-card flow" href="flow.html">
+                    <div class="name">Flow worker →</div>
+                    <div class="why">
+                        Often pairs with Apex when an Apex action is invoked from a flow, or vice versa.
+                    </div>
+                </a>
+                <a class="related-card research" href="research.html">
+                    <div class="name">Research worker →</div>
+                    <div class="why">Hands Apex worker the pre-fetched file contents so it doesn't re-read.</div>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

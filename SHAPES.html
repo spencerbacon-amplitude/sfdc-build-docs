@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shape & Tier System — Claude Code</title>
+<link rel="stylesheet" href="dark-theme.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Shape &amp; tier system</h1>
+  <div class="subtitle">How tasks get classified · drives review intensity + quick-build eligibility · source: <code>~/.claude/skills/sfdc-drive-build/SKILL.md</code></div>
+</header>
+
+<div class="toc">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#why">Why shapes exist</a></li>
+    <li><a href="#tiers">Tier definitions</a></li>
+    <li><a href="#table">The 15 shapes</a></li>
+    <li><a href="#applies">How tier affects behavior</a></li>
+    <li><a href="#classifying">Classifying a borderline task</a></li>
+    <li><a href="#new">Adding a new shape</a></li>
+  </ul>
+</div>
+
+<h2 id="why">Why shapes exist</h2>
+
+<p>Workers dispatched in parallel waves can't share session context. Each one gets a fresh prompt with sliced playbook excerpts. To make those prompts useful, the orchestrator needs to know <em>what kind of task</em> each is so it can paste the right <strong>Playbook focus pointer</strong> — a one-line reminder about the recurring review findings for tasks of that shape.</p>
+
+<p>Each task in <code>TODO.md</code> can carry a <code>shape:</code> line listing one or more shape keys. The drive-build dispatcher looks each up in the table below and pastes the matching <em>Pointer</em> verbatim into the worker's brief. No per-iteration re-classification.</p>
+
+<div class="callout info">
+<strong>Quick-build uses the same table for eligibility.</strong> If any planned task has a <code>critical</code>-tier shape, quick-build halts and routes to <code>/sfdc-drive-build</code> instead. The shape system is the shared safety boundary between the two skills.
+</div>
+
+<h2 id="tiers">Tier definitions</h2>
+
+<p>Each shape carries a tier. New shapes get classified by applying these criteria in order — first match wins:</p>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 24px 0;">
+
+  <div class="card">
+    <h3><span class="pill mech">mechanical</span></h3>
+    <p>Single-pattern XML or one-shape edit. No judgment calls. No consumers to enumerate. Failure mode caught by <code>deploy Succeeded</code>.</p>
+    <p style="color: var(--text-2); font-size: 13px; margin-top: 12px;"><strong>Example:</strong> adding a custom field XML, extending a layout, adding FLS to an operator-facing perm set.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill std">standard</span></h3>
+    <p>Needs taste/judgment (test assertion choice, SOQL placement, button styling) but blast radius is the file you touched. Failure mode caught by deploy + tests + diff-scope.</p>
+    <p style="color: var(--text-2); font-size: 13px; margin-top: 12px;"><strong>Example:</strong> extending an existing trigger handler, adding a new selector method, writing an LWC's Cancel/Confirm button.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill crit">critical</span></h3>
+    <p>Touches shared framework OR has consumer fanout. Failure mode requires planner-time enumeration of every consumer / handler / caller. Deploy + tests can pass while prod still breaks.</p>
+    <p style="color: var(--text-2); font-size: 13px; margin-top: 12px;"><strong>Example:</strong> editing <code>TriggerDispatcher</code>, adding a new picklist value, changing an <code>@api</code> surface on a shared LWC.</p>
+  </div>
+
+</div>
+
+<div class="callout warn">
+<strong>Any <code>critical</code> task in a build disqualifies the build from <code>sfdc-quick-build</code>.</strong> The build must route to <code>/sfdc-drive-build</code> instead. This is the hard safety valve.
+</div>
+
+<h2 id="table">The 15 shapes</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">Shape key</th>
+      <th style="width: 10%;">Tier</th>
+      <th>Pointer (what the worker sees in its prompt)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>metadata-field-add</code></td>
+      <td><span class="pill mech">mechanical</span></td>
+      <td><em>Tier-annotation only — no pointer; plain field XML has no recurring review pattern.</em></td>
+    </tr>
+    <tr>
+      <td><code>metadata-layout-edit</code></td>
+      <td><span class="pill mech">mechanical</span></td>
+      <td>Layout discipline → field placement honors Readonly vs Edit per behavior (formula/trigger-stamped → Readonly, operator-edited → Edit). Reuse existing section/field-set positioning when extending.</td>
+    </tr>
+    <tr>
+      <td><code>metadata-permset-fls</code></td>
+      <td><span class="pill mech">mechanical</span></td>
+      <td>Perm-set scope → only update operator-facing perm sets (e.g. <code>Amplitude_Risk_Alert_Access</code>). Copado full-permission setting deploys as-is; do NOT grep for "every perm set referencing the object" (T-011 trap, 2026-05-22).</td>
+    </tr>
+    <tr>
+      <td><code>metadata-picklist-value-add</code></td>
+      <td><span class="pill crit">critical</span></td>
+      <td>Plan-level: this task MUST have dependent tasks for every Apex/LWC/Flow consumer of the field. List them in the task description, not the worker — this is a planner check, not a worker check.</td>
+    </tr>
+    <tr>
+      <td><code>apex-soql-edit</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>SOQL discipline → <code>WITH USER_MODE</code> placement, bind variables in ALL dynamic SOQL (including LIMIT), no SOQL inside loops, hardcoded record-type names go via bind map not string concatenation.</td>
+    </tr>
+    <tr>
+      <td><code>apex-test-edit</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>Apex test discipline → use <code>Assert.*</code> with EXACT deterministic values (never <code>Assert.isTrue(size() &gt;= N)</code> or <code>&gt; 0</code> when count is known), 251+ records for any bulk-path test, no smoke checks (every test must assert a side effect), one behavior per method.</td>
+    </tr>
+    <tr>
+      <td><code>apex-trigger-handler-edit</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>Apex hard-stops → no <code>System.debug</code> in hot paths. Grep your diff AND the surrounding ±20 lines you touched for pre-existing <code>System.debug</code> and remove them as part of the cleanup pass.</td>
+    </tr>
+    <tr>
+      <td><code>apex-dml-edit</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>Apex hard-stops → <code>Database.*</code> with <code>AccessLevel.USER_MODE</code> overload; preserve all-or-none throw semantics when converting from raw DML.</td>
+    </tr>
+    <tr>
+      <td><code>apex-selector-extend</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>Selector discipline → extend <code>FIELD_LIST</code> matching existing convention (alpha or grouped); respect existing record-type filter logic; do NOT introduce a new query method on a selector that already has a canonical query path — extend the existing one.</td>
+    </tr>
+    <tr>
+      <td><code>apex-utility-new</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>New utility class → static-only when stateless; ≥90% coverage required on this class (not just 80% global floor); one behavior per public method; all-or-none semantics on collection inputs.</td>
+    </tr>
+    <tr>
+      <td><code>apex-trigger-framework-edit</code></td>
+      <td><span class="pill crit">critical</span></td>
+      <td>Trigger framework discipline → ANY edit to <code>TriggerDispatcher</code> / <code>TriggerInterface</code> / <code>AMPTestDataFactory</code> is high-blast-radius. Enumerate every existing handler/test before changing the contract; preserve recursion-guard pattern and existing bypass-flag semantics.</td>
+    </tr>
+    <tr>
+      <td><code>lwc-confirm-button</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>LWC project specifics → native button rule (NOT <code>lightning-button</code> for these roles), correct SLDS classes (<code>slds-button slds-button_neutral dr-cancel-btn</code>), hover rule using <code>--amp-color-neutral-dark</code>, <code>:host</code> block with all four canonical color tokens.</td>
+    </tr>
+    <tr>
+      <td><code>lwc-picklist-consumer</code></td>
+      <td><span class="pill crit">critical</span></td>
+      <td>LWC cross-file coordination → grep for every consumer of this picklist (<code>STATUS_BADGE_MAP</code>, status arrays, CSS badge rules, kanban column configs). If a new picklist value was added, EVERY consumer map must include it or the badge renders unstyled.</td>
+    </tr>
+    <tr>
+      <td><code>lwc-shared-component-edit</code></td>
+      <td><span class="pill crit">critical</span></td>
+      <td>LWC blast radius → enumerate every consumer of this component before changing <code>@api</code> props/events. Either backwards-compat the surface or update all consumers in the same task — partial migration leaves consumers broken at runtime, not deploy time.</td>
+    </tr>
+    <tr>
+      <td><code>flow-record-or-scheduled</code></td>
+      <td><span class="pill std">standard</span></td>
+      <td>Flow hard-stops → fault paths on every callout/DML element, 251+ records in bulk verification, no DML/Get Records in loops, no <code>$Record</code> looping.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="applies">How tier affects behavior</h2>
+
+<table>
+  <thead><tr><th style="width: 14%;">Tier</th><th style="width: 22%;">Quick-build eligible?</th><th style="width: 22%;">Quality reviewer model</th><th>Verification gate</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="pill mech">mechanical</span></td>
+      <td class="yes">✓ Yes</td>
+      <td>Haiku (cost-optimized)</td>
+      <td>Deploy <code>Succeeded</code> + diff scope. Can skip test-count check when no tests changed.</td>
+    </tr>
+    <tr>
+      <td><span class="pill std">standard</span></td>
+      <td class="yes">✓ Yes</td>
+      <td>Haiku (cost-optimized)</td>
+      <td>Deploy + tests + diff scope (full gate).</td>
+    </tr>
+    <tr>
+      <td><span class="pill crit">critical</span></td>
+      <td class="no">✗ Force drive-build</td>
+      <td>Sonnet (escalated)</td>
+      <td>Full gate + risk-review touch-point (Explore re-check).</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="classifying">Classifying a borderline task</h2>
+
+<p>If a task could read as two tiers, apply the three criteria in order:</p>
+
+<ol>
+  <li><strong>Is it a single-pattern XML or one-shape edit with no judgment calls?</strong> → mechanical.</li>
+  <li><strong>Does it need taste/judgment (assertion choice, SOQL placement, styling) but stay within the file you touched?</strong> → standard.</li>
+  <li><strong>Does it touch shared framework OR have consumer fanout?</strong> → critical.</li>
+</ol>
+
+<p>When in doubt, classify <strong>higher</strong>. A standard task running through critical-path review wastes a few minutes; a critical task running through standard review can silently ship broken consumers.</p>
+
+<div class="card">
+  <h4>Worked examples</h4>
+  <table style="font-size: 13px;">
+    <thead><tr><th>Task</th><th>Shape</th><th>Tier</th><th>Reasoning</th></tr></thead>
+    <tbody>
+      <tr><td>Add <code>Custom_Foo__c</code> field to Account</td><td><code>metadata-field-add</code></td><td><span class="pill mech">mech</span></td><td>Plain XML, no consumers.</td></tr>
+      <tr><td>Add <code>Custom_Foo__c</code> to Account Layout</td><td><code>metadata-layout-edit</code></td><td><span class="pill mech">mech</span></td><td>XML edit, position-only judgment.</td></tr>
+      <tr><td>Grant FLS on <code>Custom_Foo__c</code> via <code>Amplitude_Risk_Alert_Access</code> perm set</td><td><code>metadata-permset-fls</code></td><td><span class="pill mech">mech</span></td><td>Operator-facing perm set, single object.</td></tr>
+      <tr><td>Extend <code>AccountSelector.FIELD_LIST</code> with <code>Custom_Foo__c</code></td><td><code>apex-selector-extend</code></td><td><span class="pill std">std</span></td><td>Convention judgment (alpha vs grouped), test update.</td></tr>
+      <tr><td>Add new Apex utility class <code>FooUtils</code> with static methods</td><td><code>apex-utility-new</code></td><td><span class="pill std">std</span></td><td>New file, but standard pattern; ≥90% coverage required.</td></tr>
+      <tr><td>Add new status value <code>'Escalated'</code> to <code>Pod_Alert__c.Status__c</code></td><td><code>metadata-picklist-value-add</code></td><td><span class="pill crit">crit</span></td><td>Fanout: kanban LWC, status badges, validation rules, Apex switches.</td></tr>
+      <tr><td>Add a <code>preDispatch()</code> hook to <code>TriggerDispatcher</code></td><td><code>apex-trigger-framework-edit</code></td><td><span class="pill crit">crit</span></td><td>Every handler in the repo depends on this.</td></tr>
+      <tr><td>Change <code>@api recordId</code> → <code>@api accountId</code> on <code>accountHealthOverview</code> LWC</td><td><code>lwc-shared-component-edit</code></td><td><span class="pill crit">crit</span></td><td>Every consumer's HTML/JS attribute breaks at runtime.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="new">Adding a new shape</h2>
+
+<p>If you find yourself classifying a task and no existing shape fits — that's a signal to add one. Process:</p>
+
+<ol>
+  <li><strong>Identify the recurring review finding.</strong> Shapes earn their place by being review-cycle problems that come up more than once. If you've reviewed three tasks of the same kind and caught the same issue, that's a shape.</li>
+  <li><strong>Pick a tier</strong> using the three criteria above.</li>
+  <li><strong>Write the pointer.</strong> One sentence, imperative voice, names the specific failure mode and the corrective rule. Example pattern: <code>X discipline → do Y, never Z (recently caught: ...)</code>.</li>
+  <li><strong>Edit <code>~/.claude/skills/sfdc-drive-build/SKILL.md</code></strong> — add the row to the playbook focus pointers table (around line 320). Also add the shape key to the bullet list above the table.</li>
+  <li><strong>Update SHAPES.html</strong> (this doc) — that's how it shows up in the dashboard.</li>
+  <li><strong>If critical:</strong> update the CLAUDE.md "Critical-tier shapes that force drive-build" line so the user-facing decision tree stays accurate.</li>
+</ol>
+
+<hr>
+<p style="color: var(--text-3); font-size: 12px; text-align: center;">
+  Source: <code>~/.claude/skills/sfdc-drive-build/SKILL.md</code> "Playbook focus pointers" table (around line 320) · referenced by quick-build Step 3 tier-eligibility check · drives reviewer model selection + verification gate strictness
+</p>
+
+</div>
+</body>
+</html>
