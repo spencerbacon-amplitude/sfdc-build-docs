@@ -15,6 +15,10 @@ Hosted via GitHub Pages → [open the site](https://spencerbacon-amplitude.githu
 | Shapes & Tiers | mirrored from `~/.claude/SHAPES.html` |
 | Worker workflows (index + per-worker + combined) | mirrored from `spencerdev/docs/worker-workflows/` and `spencerdev/docs/worker-workflows.html` |
 
+## Not included
+
+The worker docs reference template/scaffold directories the agents read internally — `docs/apex-templates/`, `docs/lwc-templates/`, `docs/flow-templates/`, `docs/metadata-templates/`, `docs/apex-test-templates/`, `docs/debug-references/`, `docs/data-references/`, `docs/deploy-references/`. These are intentionally not mirrored here; canonical home is `spencerdev/docs/`. Links to those paths inside the worker pages are reference-only, not clickable.
+
 ## Refreshing
 
 Source files live outside this repo. Updates are not automatic.
